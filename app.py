@@ -2364,6 +2364,10 @@ with t10:
                         st.rerun()
 
 
+import os
+
+# Dosyanın içeriğini bir değişken olarak tanımlayın
+file_content = r"""
 # ═════════════════════════════════════════════════════════════════
 # FOOTER
 # ═════════════════════════════════════════════════════════════════
@@ -2372,16 +2376,23 @@ pydub_s  = "✅ PyDub" if PYDUB_OK  else "❌ PyDub (pip install pydub)"
 numpy_s  = "✅ NumPy" if NP_OK     else "❌ NumPy"
 mutagen_s= "✅ Mutagen" if MUTAGEN_OK else "—"
 tk_f, tr_f = pool_stats()
-st.markdown(f"""
+st.markdown(f'''
 <div style='text-align:center;color:#101828;font-size:.65rem;letter-spacing:.1em;padding:5px 0 12px;'>
     İMAJ FM TTS STÜDYO v6 &nbsp;·&nbsp; Google Gemini TTS API &nbsp;·&nbsp;
     {pydub_s} &nbsp;·&nbsp; {numpy_s} &nbsp;·&nbsp;
     API: {tk_f}/10 yüklü · {tr_f} kalan &nbsp;·&nbsp; 2026
 </div>
-""",unsafe_allow_html=True)
-ENDOFFILE
-echo
-Output
+''',unsafe_allow_html=True)
+"""
 
-Command argument is 146_327 bytes, exceeding the 100_000-byte per-argument limit. For large content, pipe via stdin or use a file-write API instead of embedding the content inline in the command. Argument preview: 'cat > /mnt/user-data/outputs/app_v6.py << \'ENDOFFILE\'\n"""\n╔══════════════════════════════════════════════════════════════════════════════╗\n║  İMAJ FM · TTS STÜDYO  v6.0 — TAM ENTEGRE YAYIN SİSTEMİ    '
-Done
+# Dosyayı yazmak için güvenli yöntem
+output_path = "/mnt/user-data/outputs/app_v6.py"
+
+# Klasörün var olduğundan emin olun
+os.makedirs(os.path.dirname(output_path), exist_ok=True)
+
+# Dosyayı yazın
+with open(output_path, "w", encoding="utf-8") as f:
+    f.write(file_content)
+
+print("Dosya başarıyla oluşturuldu.")
