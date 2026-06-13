@@ -2380,7 +2380,7 @@ st.markdown(f"""
 </div>
 """,unsafe_allow_html=True)
 ENDOFFILE
-echo "Done"
+echo
 Output
 
 Command argument is 146_327 bytes, exceeding the 100_000-byte per-argument limit. For large content, pipe via stdin or use a file-write API instead of embedding the content inline in the command. Argument preview: 'cat > /mnt/user-data/outputs/app_v6.py << \'ENDOFFILE\'\n"""\n╔══════════════════════════════════════════════════════════════════════════════╗\n║  İMAJ FM · TTS STÜDYO  v6.0 — TAM ENTEGRE YAYIN SİSTEMİ    '
