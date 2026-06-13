@@ -1,6 +1,3 @@
-bash
-
-cat > /mnt/user-data/outputs/app_v6.py << 'ENDOFFILE'
 """
 ╔══════════════════════════════════════════════════════════════════════════════╗
 ║  İMAJ FM · TTS STÜDYO  v6.0 — TAM ENTEGRE YAYIN SİSTEMİ                   ║
