@@ -5,6 +5,8 @@
 ║  Playlist · Toplu TTS · A/B Test · Kütüphane · Arşiv · ZIP                 ║
 ╚══════════════════════════════════════════════════════════════════════════════╝
 """
+import warnings
+warnings.filterwarnings("ignore", category=SyntaxWarning)
 import streamlit as st
 import wave, io, zipfile, re, time, datetime, hashlib, os, shutil
 
