@@ -1130,243 +1130,243 @@ with t6:
 with t7:
     st.markdown("<div class='rjhdr' style='border-color:#1a1a3e;'><h2 style='background:linear-gradient(90deg,#fff 30%,#a78bfa);-webkit-background-clip:text;-webkit-text-fill-color:transparent;'>🎛️ Fon+Anons Mikseri</h2><p style='color:#2e2040;'>Anons TTS + Fon müziği · Duck efekti · Fade-in/out · Arşivden miksleme · ZIP</p></div>",unsafe_allow_html=True)
     if not PYDUB_OK:
-        st.markdown("<div class='card r'>⚠️ PyDub kurulu değil: <code>pip install pydub</code></div>",unsafe_allow_html=True)
-    else:
-        fon_mx=list_audio(DIRS["fon"])
-        if not fon_mx: st.markdown("<div class='card a'>📁 Fon klasörü boş. Kütüphane sekmesinden müzik yükleyin.</div>",unsafe_allow_html=True)
-        mx1,mx2,mx3=st.tabs(["🎛️ Tek Miksleme","📦 Toplu Fon","🗄️ Arşivden"])
+        st.markdown("<div class='card r'>⚠️ <b>PyDub kurulu değil.</b> Repo'nuzda <b>requirements.txt</b> içinde <code>pydub</code> ve <b>packages.txt</b> içinde <code>ffmpeg</code> olduğundan emin olun, sonra yeniden deploy edin.</div>",unsafe_allow_html=True)
+        st.stop()
+    fon_mx=list_audio(DIRS["fon"])
+    if not fon_mx: st.markdown("<div class='card a'>📁 Fon klasörü boş. Kütüphane sekmesinden müzik yükleyin.</div>",unsafe_allow_html=True)
+    mx1,mx2,mx3=st.tabs(["🎛️ Tek Miksleme","📦 Toplu Fon","🗄️ Arşivden"])
 
-        with mx1:
-            cLm,cRm=st.columns([1.1,1],gap="large")
-            with cLm:
-                st.markdown("<span class='sl'>▶ Anons TTS Ayarları</span>",unsafe_allow_html=True)
-                mx_ml=st.selectbox("MX Model",list(MODELS.values()),label_visibility="collapsed",key="mx_m")
-                mx_mdl=[k for k,v in MODELS.items() if v==mx_ml][0]
-                mx_ll=st.selectbox("MX Dil",list(LANGUAGES.values()),label_visibility="collapsed",index=1,key="mx_l")
-                mx_lng=[k for k,v in LANGUAGES.items() if v==mx_ll][0]
-                mx_cn=st.radio("MX Cins",["Tümü","♀ Kadın","♂ Erkek"],horizontal=True,label_visibility="collapsed",key="mx_cn")
-                mx_vf={k:v for k,v in VOICES.items() if mx_cn=="Tümü" or (mx_cn=="♀ Kadın" and v[0]=="♀") or (mx_cn=="♂ Erkek" and v[0]=="♂")}
-                mx_vc=st.selectbox("MX Ses",list(mx_vf.keys()),format_func=lambda x:f"{VOICES[x][0]} {x}",label_visibility="collapsed",key="mx_v")
-                mx_ps=st.selectbox("MX Stil",list(STYLE_PRESETS.keys()),label_visibility="collapsed",key="mx_ps")
-                mx_sty=st.text_area("MX Stil T",value=STYLE_PRESETS[mx_ps],height=58,label_visibility="collapsed",key="mx_sty")
-                st.markdown("<span class='sl'>▶ Hazır Anons WAV Yükle</span>",unsafe_allow_html=True)
-                mx_up=st.file_uploader("Hazır anons",type=["wav","mp3"],key="mx_up")
-                mx_uwav=None
-                if mx_up:
-                    _,mx_uwav=save_upload(mx_up,DIRS["anons"],f"up_{int(time.time())}.wav")
-                    if mx_uwav: st.audio(mx_uwav,format="audio/wav"); st.markdown(f"<div class='card g' style='font-size:.71rem;'>✅ Yüklendi — {dur_bytes(mx_uwav):.1f}s</div>",unsafe_allow_html=True)
-            with cRm:
-                st.markdown("<span class='sl'>▶ Anons Metni</span>",unsafe_allow_html=True)
-                mx_txt=st.text_area("MX TXT","",height=95,label_visibility="collapsed",key="mx_txt",placeholder="Anons metni yaz veya sol taraftan WAV yükle…")
-                if mx_txt: txt_stats(mx_txt)
-                st.markdown("<span class='sl'>▶ Fon Müziği</span>",unsafe_allow_html=True)
-                fon_src=st.radio("Fon Kaynak",["📁 Kütüphaneden","📤 Yükle"],horizontal=True,key="fon_src")
-                sel_fon=None; fon_path=None
-                if fon_src=="📁 Kütüphaneden":
-                    if fon_mx:
-                        sel_fon=st.selectbox("Fon",fon_mx,label_visibility="collapsed",key="sel_fon")
-                        fon_path=os.path.join(DIRS["fon"],sel_fon)
-                        st.markdown(f"<div style='font-size:.67rem;color:#2e3f55;'>{sel_fon} · {fmt_dur(dur_file(fon_path))}</div>",unsafe_allow_html=True)
-                    else: st.markdown("<div class='card a'>Kütüphanede fon yok</div>",unsafe_allow_html=True)
-                else:
-                    fon_up2=st.file_uploader("Fon Müziği",type=["mp3","wav","ogg"],key="fon_up2")
-                    if fon_up2:
-                        dp2,_=save_upload(fon_up2,DIRS["fon"],fon_up2.name)
-                        if dp2: sel_fon=fon_up2.name; fon_path=dp2; st.success(f"✅ Kütüphaneye eklendi")
-                st.markdown("<span class='sl'>▶ Parametreler</span>",unsafe_allow_html=True)
-                mx_p1,mx_p2=st.columns(2)
-                with mx_p1:
-                    fvol=st.slider("Fon Ses",-24,0,-8,key="mx_fvol")
-                    duck=st.slider("Duck dB",-30,-6,-16,key="mx_duck")
-                with mx_p2:
-                    fi=st.slider("Fade-In ms",100,3000,800,key="mx_fi")
-                    fo=st.slider("Fade-Out ms",100,5000,1500,key="mx_fo")
-                mx_eq=st.selectbox("EQ",EQ_OPTS,label_visibility="collapsed",key="mx_eq")
-                if st.button("🎛️ MİKSLE & OLUŞTUR",type="primary",use_container_width=True,key="mx_btn"):
-                    anons_wav=mx_uwav
-                    if not anons_wav and mx_txt.strip():
-                        ak_mx,ai_mx=get_key()
-                        if ak_mx:
-                            with st.spinner(f"🎙️ {mx_vc}…"):
-                                try:
-                                    rw=tts_single(ak_mx,mx_mdl,mx_txt,mx_vc,mx_lng,mx_sty); anons_wav=pcm2wav(rw); consume(ai_mx,len(mx_txt)); arc_add(mx_vc,mx_mdl,mx_lng,mx_sty,mx_txt,anons_wav,"tek")
-                                except Exception as e: st.error(f"❌ TTS: {e}")
-                    if anons_wav and fon_path and os.path.exists(fon_path):
-                        with st.spinner("🎛️ Miksliyor…"):
-                            try:
-                                vs=AudioSegment.from_file(io.BytesIO(anons_wav),format="wav")
-                                fs=AudioSegment.from_file(fon_path)
-                                mx_out=mix_fon_voice(fs,vs,fvol,duck,fi,fo)
-                                if mx_eq!="Ham": mx_out=apply_eq(mx_out,mx_eq)
-                                mxw=seg_to_wav(norm_seg(mx_out))
-                                qs=qs_bytes(mxw)
-                                st.markdown(f"<div class='card t'>✅ Fon+Anons Hazır · {fmt_dur(len(mx_out)/1000)} · {qs}/100</div>",unsafe_allow_html=True)
-                                st.audio(mxw,format="audio/wav"); draw_wf(mxw)
-                                st.download_button("📦 Fon+Anons WAV İndir",mxw,file_name=f"fon_anons_{int(time.time())}.wav",mime="audio/wav",use_container_width=True,key="dl_mx")
-                            except Exception as e: st.error(f"❌ Miksleme: {e}")
-                    elif anons_wav:
-                        st.audio(anons_wav,format="audio/wav")
-                        st.download_button("💾 Anons (fonsuz)",anons_wav,file_name="anons.wav",mime="audio/wav",key="dl_anons_only")
-                    elif not (mx_txt.strip() or mx_uwav): st.warning("⚠️ Metin girin veya WAV yükleyin.")
-
-        with mx2:
-            st.markdown("<div class='card b'>Arşivdeki TTS seslerine toplu fon uygula</div>",unsafe_allow_html=True)
-            arc_mx=[e for e in st.session_state._archive if e.get("wav")]
-            if not arc_mx or not fon_mx: st.info("Arşivde ses veya kütüphanede fon yok.")
-            else:
-                sf_bulk=st.selectbox("Fon",fon_mx,key="sfb"); fv_b=st.slider("Fon Ses",-24,0,-8,key="fvb"); dd_b=st.slider("Duck",-30,-6,-16,key="ddb")
-                sel_ab=st.multiselect("Arşivden Seç",[f"{e['ts_s']} · {e['voice']} · {e['prev'][:28]}" for e in arc_mx],key="sel_ab")
-                if sel_ab and st.button("📦 Toplu Uygula",use_container_width=True,key="bulk_fon"):
-                    idxs=[i for i,e in enumerate(arc_mx) if f"{e['ts_s']} · {e['voice']} · {e['prev'][:28]}" in sel_ab]
-                    fs2=AudioSegment.from_file(os.path.join(DIRS["fon"],sf_bulk)); res_b=[]; prg_b=st.progress(0)
-                    for ni,idx_b in enumerate(idxs):
-                        try:
-                            vs2=AudioSegment.from_file(io.BytesIO(arc_mx[idx_b]["wav"]),format="wav")
-                            ms=mix_fon_voice(fs2,vs2,fv_b,dd_b); mw=seg_to_wav(ms)
-                            res_b.append((f"fon_{arc_mx[idx_b]['voice']}_{arc_mx[idx_b]['id']}.wav",mw))
-                        except Exception as e: st.warning(f"Hata: {e}")
-                        prg_b.progress((ni+1)/len(idxs))
-                    if res_b: z=make_zip(res_b); st.success(f"✅ {len(res_b)} ses miksleştirildi!"); st.download_button("📦 ZIP",z,"fon_toplu.zip","application/zip",key="dl_toplu_fon")
-
-        with mx3:
-            arc_mx3=[e for e in st.session_state._archive if e.get("wav")]
-            if not arc_mx3: st.info("Arşiv boş.")
-            else:
-                sel_a3=st.selectbox("Arşivden",[f"{e['ts_s']} | {e['voice']} | {e['prev'][:38]}" for e in arc_mx3],key="sel_a3")
-                idx_a3=next((i for i,e in enumerate(arc_mx3) if f"{e['ts_s']} | {e['voice']} | {e['prev'][:38]}"==sel_a3),0)
-                ent=arc_mx3[idx_a3]; st.audio(ent["wav"],format="audio/wav"); draw_wf(ent["wav"])
+    with mx1:
+        cLm,cRm=st.columns([1.1,1],gap="large")
+        with cLm:
+            st.markdown("<span class='sl'>▶ Anons TTS Ayarları</span>",unsafe_allow_html=True)
+            mx_ml=st.selectbox("MX Model",list(MODELS.values()),label_visibility="collapsed",key="mx_m")
+            mx_mdl=[k for k,v in MODELS.items() if v==mx_ml][0]
+            mx_ll=st.selectbox("MX Dil",list(LANGUAGES.values()),label_visibility="collapsed",index=1,key="mx_l")
+            mx_lng=[k for k,v in LANGUAGES.items() if v==mx_ll][0]
+            mx_cn=st.radio("MX Cins",["Tümü","♀ Kadın","♂ Erkek"],horizontal=True,label_visibility="collapsed",key="mx_cn")
+            mx_vf={k:v for k,v in VOICES.items() if mx_cn=="Tümü" or (mx_cn=="♀ Kadın" and v[0]=="♀") or (mx_cn=="♂ Erkek" and v[0]=="♂")}
+            mx_vc=st.selectbox("MX Ses",list(mx_vf.keys()),format_func=lambda x:f"{VOICES[x][0]} {x}",label_visibility="collapsed",key="mx_v")
+            mx_ps=st.selectbox("MX Stil",list(STYLE_PRESETS.keys()),label_visibility="collapsed",key="mx_ps")
+            mx_sty=st.text_area("MX Stil T",value=STYLE_PRESETS[mx_ps],height=58,label_visibility="collapsed",key="mx_sty")
+            st.markdown("<span class='sl'>▶ Hazır Anons WAV Yükle</span>",unsafe_allow_html=True)
+            mx_up=st.file_uploader("Hazır anons",type=["wav","mp3"],key="mx_up")
+            mx_uwav=None
+            if mx_up:
+                _,mx_uwav=save_upload(mx_up,DIRS["anons"],f"up_{int(time.time())}.wav")
+                if mx_uwav: st.audio(mx_uwav,format="audio/wav"); st.markdown(f"<div class='card g' style='font-size:.71rem;'>✅ Yüklendi — {dur_bytes(mx_uwav):.1f}s</div>",unsafe_allow_html=True)
+        with cRm:
+            st.markdown("<span class='sl'>▶ Anons Metni</span>",unsafe_allow_html=True)
+            mx_txt=st.text_area("MX TXT","",height=95,label_visibility="collapsed",key="mx_txt",placeholder="Anons metni yaz veya sol taraftan WAV yükle…")
+            if mx_txt: txt_stats(mx_txt)
+            st.markdown("<span class='sl'>▶ Fon Müziği</span>",unsafe_allow_html=True)
+            fon_src=st.radio("Fon Kaynak",["📁 Kütüphaneden","📤 Yükle"],horizontal=True,key="fon_src")
+            sel_fon=None; fon_path=None
+            if fon_src=="📁 Kütüphaneden":
                 if fon_mx:
-                    sf3=st.selectbox("Fon",fon_mx,key="sf3"); fv3=st.slider("Fon",-24,0,-8,key="fv3")
-                    if st.button("🎛️ Uygula",use_container_width=True,key="arc_mix3"):
+                    sel_fon=st.selectbox("Fon",fon_mx,label_visibility="collapsed",key="sel_fon")
+                    fon_path=os.path.join(DIRS["fon"],sel_fon)
+                    st.markdown(f"<div style='font-size:.67rem;color:#2e3f55;'>{sel_fon} · {fmt_dur(dur_file(fon_path))}</div>",unsafe_allow_html=True)
+                else: st.markdown("<div class='card a'>Kütüphanede fon yok</div>",unsafe_allow_html=True)
+            else:
+                fon_up2=st.file_uploader("Fon Müziği",type=["mp3","wav","ogg"],key="fon_up2")
+                if fon_up2:
+                    dp2,_=save_upload(fon_up2,DIRS["fon"],fon_up2.name)
+                    if dp2: sel_fon=fon_up2.name; fon_path=dp2; st.success(f"✅ Kütüphaneye eklendi")
+            st.markdown("<span class='sl'>▶ Parametreler</span>",unsafe_allow_html=True)
+            mx_p1,mx_p2=st.columns(2)
+            with mx_p1:
+                fvol=st.slider("Fon Ses",-24,0,-8,key="mx_fvol")
+                duck=st.slider("Duck dB",-30,-6,-16,key="mx_duck")
+            with mx_p2:
+                fi=st.slider("Fade-In ms",100,3000,800,key="mx_fi")
+                fo=st.slider("Fade-Out ms",100,5000,1500,key="mx_fo")
+            mx_eq=st.selectbox("EQ",EQ_OPTS,label_visibility="collapsed",key="mx_eq")
+            if st.button("🎛️ MİKSLE & OLUŞTUR",type="primary",use_container_width=True,key="mx_btn"):
+                anons_wav=mx_uwav
+                if not anons_wav and mx_txt.strip():
+                    ak_mx,ai_mx=get_key()
+                    if ak_mx:
+                        with st.spinner(f"🎙️ {mx_vc}…"):
+                            try:
+                                rw=tts_single(ak_mx,mx_mdl,mx_txt,mx_vc,mx_lng,mx_sty); anons_wav=pcm2wav(rw); consume(ai_mx,len(mx_txt)); arc_add(mx_vc,mx_mdl,mx_lng,mx_sty,mx_txt,anons_wav,"tek")
+                            except Exception as e: st.error(f"❌ TTS: {e}")
+                if anons_wav and fon_path and os.path.exists(fon_path):
+                    with st.spinner("🎛️ Miksliyor…"):
                         try:
-                            vs3=AudioSegment.from_file(io.BytesIO(ent["wav"]),format="wav"); fs3=AudioSegment.from_file(os.path.join(DIRS["fon"],sf3))
-                            m3=mix_fon_voice(fs3,vs3,fv3); mw3=seg_to_wav(norm_seg(m3)); st.audio(mw3,format="audio/wav"); st.download_button("💾 WAV",mw3,f"arc_fon_{ent['id']}.wav","audio/wav",key="dl_arc3")
-                        except Exception as e: st.error(f"❌ {e}")
+                            vs=AudioSegment.from_file(io.BytesIO(anons_wav),format="wav")
+                            fs=AudioSegment.from_file(fon_path)
+                            mx_out=mix_fon_voice(fs,vs,fvol,duck,fi,fo)
+                            if mx_eq!="Ham": mx_out=apply_eq(mx_out,mx_eq)
+                            mxw=seg_to_wav(norm_seg(mx_out))
+                            qs=qs_bytes(mxw)
+                            st.markdown(f"<div class='card t'>✅ Fon+Anons Hazır · {fmt_dur(len(mx_out)/1000)} · {qs}/100</div>",unsafe_allow_html=True)
+                            st.audio(mxw,format="audio/wav"); draw_wf(mxw)
+                            st.download_button("📦 Fon+Anons WAV İndir",mxw,file_name=f"fon_anons_{int(time.time())}.wav",mime="audio/wav",use_container_width=True,key="dl_mx")
+                        except Exception as e: st.error(f"❌ Miksleme: {e}")
+                elif anons_wav:
+                    st.audio(anons_wav,format="audio/wav")
+                    st.download_button("💾 Anons (fonsuz)",anons_wav,file_name="anons.wav",mime="audio/wav",key="dl_anons_only")
+                elif not (mx_txt.strip() or mx_uwav): st.warning("⚠️ Metin girin veya WAV yükleyin.")
+
+    with mx2:
+        st.markdown("<div class='card b'>Arşivdeki TTS seslerine toplu fon uygula</div>",unsafe_allow_html=True)
+        arc_mx=[e for e in st.session_state._archive if e.get("wav")]
+        if not arc_mx or not fon_mx: st.info("Arşivde ses veya kütüphanede fon yok.")
+        else:
+            sf_bulk=st.selectbox("Fon",fon_mx,key="sfb"); fv_b=st.slider("Fon Ses",-24,0,-8,key="fvb"); dd_b=st.slider("Duck",-30,-6,-16,key="ddb")
+            sel_ab=st.multiselect("Arşivden Seç",[f"{e['ts_s']} · {e['voice']} · {e['prev'][:28]}" for e in arc_mx],key="sel_ab")
+            if sel_ab and st.button("📦 Toplu Uygula",use_container_width=True,key="bulk_fon"):
+                idxs=[i for i,e in enumerate(arc_mx) if f"{e['ts_s']} · {e['voice']} · {e['prev'][:28]}" in sel_ab]
+                fs2=AudioSegment.from_file(os.path.join(DIRS["fon"],sf_bulk)); res_b=[]; prg_b=st.progress(0)
+                for ni,idx_b in enumerate(idxs):
+                    try:
+                        vs2=AudioSegment.from_file(io.BytesIO(arc_mx[idx_b]["wav"]),format="wav")
+                        ms=mix_fon_voice(fs2,vs2,fv_b,dd_b); mw=seg_to_wav(ms)
+                        res_b.append((f"fon_{arc_mx[idx_b]['voice']}_{arc_mx[idx_b]['id']}.wav",mw))
+                    except Exception as e: st.warning(f"Hata: {e}")
+                    prg_b.progress((ni+1)/len(idxs))
+                if res_b: z=make_zip(res_b); st.success(f"✅ {len(res_b)} ses miksleştirildi!"); st.download_button("📦 ZIP",z,"fon_toplu.zip","application/zip",key="dl_toplu_fon")
+
+    with mx3:
+        arc_mx3=[e for e in st.session_state._archive if e.get("wav")]
+        if not arc_mx3: st.info("Arşiv boş.")
+        else:
+            sel_a3=st.selectbox("Arşivden",[f"{e['ts_s']} | {e['voice']} | {e['prev'][:38]}" for e in arc_mx3],key="sel_a3")
+            idx_a3=next((i for i,e in enumerate(arc_mx3) if f"{e['ts_s']} | {e['voice']} | {e['prev'][:38]}"==sel_a3),0)
+            ent=arc_mx3[idx_a3]; st.audio(ent["wav"],format="audio/wav"); draw_wf(ent["wav"])
+            if fon_mx:
+                sf3=st.selectbox("Fon",fon_mx,key="sf3"); fv3=st.slider("Fon",-24,0,-8,key="fv3")
+                if st.button("🎛️ Uygula",use_container_width=True,key="arc_mix3"):
+                    try:
+                        vs3=AudioSegment.from_file(io.BytesIO(ent["wav"]),format="wav"); fs3=AudioSegment.from_file(os.path.join(DIRS["fon"],sf3))
+                        m3=mix_fon_voice(fs3,vs3,fv3); mw3=seg_to_wav(norm_seg(m3)); st.audio(mw3,format="audio/wav"); st.download_button("💾 WAV",mw3,f"arc_fon_{ent['id']}.wav","audio/wav",key="dl_arc3")
+                    except Exception as e: st.error(f"❌ {e}")
 
 # ════════════════ T8 — YAYIN OTOMASYONU ══════════════════════════
 with t8:
     st.markdown("<div class='rjhdr' style='border-color:#0d2e0a;'><h2 style='background:linear-gradient(90deg,#fff 30%,#22c55e);-webkit-background-clip:text;-webkit-text-fill-color:transparent;'>🚀 Yayın Otomasyonu</h2><p style='color:#1a3010;'>Şarkı + Anons + Fon → Tam yayın akışı · Zincir · Ses Birleştir · ZIP</p></div>",unsafe_allow_html=True)
     if not PYDUB_OK:
-        st.markdown("<div class='card r'>⚠️ PyDub gerekli: <code>pip install pydub</code></div>",unsafe_allow_html=True)
-    else:
-        yo1,yo2,yo3=st.tabs(["📋 Yayın Planla","🔗 Zincir Yayın","✂️ Ses Birleştir"])
+        st.markdown("<div class='card r'>⚠️ <b>PyDub kurulu değil.</b> Repo'nuzda <b>requirements.txt</b> içinde <code>pydub</code> ve <b>packages.txt</b> içinde <code>ffmpeg</code> olduğundan emin olun, sonra yeniden deploy edin.</div>",unsafe_allow_html=True)
+        st.stop()
+    yo1,yo2,yo3=st.tabs(["📋 Yayın Planla","🔗 Zincir Yayın","✂️ Ses Birleştir"])
 
-        with yo1:
-            pl_songs_yo=list_audio(DIRS["playlist"])
-            if not pl_songs_yo: st.markdown("<div class='card a'>📁 Kütüphanede şarkı yok. Kütüphane sekmesinden ekleyin.</div>",unsafe_allow_html=True)
+    with yo1:
+        pl_songs_yo=list_audio(DIRS["playlist"])
+        if not pl_songs_yo: st.markdown("<div class='card a'>📁 Kütüphanede şarkı yok. Kütüphane sekmesinden ekleyin.</div>",unsafe_allow_html=True)
+        else:
+            yc1,yc2=st.columns([1.2,1])
+            with yc1:
+                yo_sel=st.multiselect("Şarkı Sıralaması",pl_songs_yo,default=pl_songs_yo[:min(3,len(pl_songs_yo))],key="yo_sel")
+                yo_cf=st.slider("Crossfade ms",0,3000,1200,key="yo_cf"); yo_gap=st.slider("Boşluk ms",0,5000,1500,key="yo_gap")
+                fon_yo=list_audio(DIRS["fon"]); yo_fon=st.selectbox("Fon",["Yok"]+fon_yo,key="yo_fon")
+                yo_fvol=st.slider("Fon Ses",-24,0,-8,key="yo_fvol") if yo_fon!="Yok" else -8
+                yo_duck=st.slider("Duck",-30,-6,-16,key="yo_duck") if yo_fon!="Yok" else -16
+                yo_name=st.text_input("Yayın Adı",value=f"Yayin_{datetime.datetime.now().strftime('%H%M')}",key="yo_name")
+            with yc2:
+                st.markdown("<span class='sl'>▶ Anons Ekle</span>",unsafe_allow_html=True)
+                arc_yo=[e for e in st.session_state._archive if e.get("wav")]
+                st.markdown(f"<div style='font-size:.67rem;color:#2e3f55;'>Arşivde {len(arc_yo)} ses · Sırayla şarkı başına atanır</div>",unsafe_allow_html=True)
+                yo_arc=st.checkbox("Arşiv seslerini şarkı başına ekle",key="yo_arc")
+                yo_up=st.file_uploader("Veya Anons WAV Yükle",type=["wav"],accept_multiple_files=True,key="yo_up")
+                up_anons=[]
+                if yo_up:
+                    for uf in yo_up:
+                        _,wv=save_upload(uf,DIRS["anons"],uf.name)
+                        if wv: up_anons.append(wv)
+                    if up_anons: st.success(f"✅ {len(up_anons)} anons yüklendi")
+            if yo_sel and st.button("🚀 YAYIN OLUŞTUR",type="primary",use_container_width=True,key="yo_btn"):
+                with st.status("🎙️ Yayın oluşturuluyor…",expanded=True) as yo_st:
+                    master=AudioSegment.silent(500)
+                    fon_yo_seg=AudioSegment.from_file(os.path.join(DIRS["fon"],yo_fon)) if yo_fon!="Yok" else None
+                    for idx_y,fn_y in enumerate(yo_sel):
+                        sp_y=os.path.join(DIRS["playlist"],fn_y)
+                        if not os.path.exists(sp_y): st.write(f"⚠️ {fn_y} bulunamadı"); continue
+                        st.write(f"🎵 [{idx_y+1}/{len(yo_sel)}] {fn_y}")
+                        try: sseg=AudioSegment.from_file(sp_y)
+                        except Exception as e: st.write(f"❌ {e}"); continue
+                        an_wav=None
+                        if yo_arc and idx_y<len(arc_yo):
+                            try: an_wav=arc_yo[idx_y]["wav"]
+                            except: pass
+                        elif idx_y<len(up_anons): an_wav=up_anons[idx_y]
+                        if an_wav:
+                            aseg=AudioSegment.from_file(io.BytesIO(an_wav),format="wav")
+                            if fon_yo_seg: blk=mix_fon_voice(fon_yo_seg,aseg,yo_fvol,yo_duck).append(sseg,crossfade=min(yo_cf,len(sseg)//3))
+                            else: blk=aseg+sseg
+                        else: blk=sseg
+                        master=master.append(blk,crossfade=min(yo_cf,len(blk)//3))
+                        if yo_gap>0: master+=AudioSegment.silent(yo_gap)
+                        st.write(f"✅ [{idx_y+1}] Tamamlandı")
+                    master=norm_seg(master); out_yo=seg_to_wav(master); yo_st.update(label="✅ Hazır!",state="complete")
+                st.markdown(f"<div class='card g'>✅ {yo_name} · {fmt_dur(len(master)/1000)} · {len(yo_sel)} şarkı</div>",unsafe_allow_html=True)
+                st.audio(out_yo,format="audio/wav"); st.download_button(f"📦 {yo_name} İndir",out_yo,file_name=f"{yo_name}.wav",mime="audio/wav",use_container_width=True,key="dl_yo"); st.balloons()
+
+    with yo2:
+        st.markdown("<div class='card b'>Delay Reji anonsları + Kütüphane şarkıları → Zincir yayın</div>",unsafe_allow_html=True)
+        pl_songs_ch=list_audio(DIRS["playlist"]); fon_ch_list=list_audio(DIRS["fon"])
+        rj_pl=st.session_state._playlist
+        if not pl_songs_ch or not fon_ch_list: st.markdown("<div class='card a'>Şarkı ve fon müziği gerekli.</div>",unsafe_allow_html=True)
+        elif not rj_pl: st.markdown("<div class='card a'>Delay Reji playlist boş.</div>",unsafe_allow_html=True)
+        else:
+            ch_fon=st.selectbox("Fon",fon_ch_list,key="ch_fon"); ch_cf=st.slider("Crossfade",0,2000,1000,key="ch_cf"); ch_name=st.text_input("Yayın Adı",value=f"Zincir_{datetime.datetime.now().strftime('%H%M')}",key="ch_name")
+            anr=[(s,s.get("anons_wav_bas") or s.get("anons_wav_son")) for s in rj_pl if s.get("anons_wav_bas") or s.get("anons_wav_son")]
+            st.markdown(f"<div class='card t'>{len(anr)}/{len(rj_pl)} şarkı için anons hazır</div>",unsafe_allow_html=True)
+            if st.button("🔗 ZİNCİR YAYIN",type="primary",use_container_width=True,key="ch_btn"):
+                with st.status("🔗 Zincir…",expanded=True) as ch_st:
+                    mch=AudioSegment.silent(500); fch=AudioSegment.from_file(os.path.join(DIRS["fon"],ch_fon))
+                    for i,song in enumerate(rj_pl):
+                        st.write(f"🎵 [{i+1}/{len(rj_pl)}] {song.get('title','?')}")
+                        aw=song.get("anons_wav_bas") or song.get("anons_wav_son"); lf=song.get("local_file")
+                        pf=next((f for f in pl_songs_ch if song.get("title","").lower() in f.lower()),None)
+                        sp=lf if lf and os.path.exists(lf) else (os.path.join(DIRS["playlist"],pf) if pf else None)
+                        if sp and os.path.exists(sp):
+                            try:
+                                sg=AudioSegment.from_file(sp)
+                                if aw:
+                                    ag=AudioSegment.from_file(io.BytesIO(aw),format="wav"); blk=mix_fon_voice(fch,ag).append(sg,crossfade=ch_cf)
+                                else: blk=sg
+                                mch=mch.append(blk,crossfade=ch_cf); st.write(f"✅ [{i+1}]")
+                            except Exception as e: st.write(f"❌ {e}")
+                        elif aw:
+                            ag2=AudioSegment.from_file(io.BytesIO(aw),format="wav"); mch=mch.append(mix_fon_voice(fch,ag2),crossfade=ch_cf)
+                    mch=norm_seg(mch); chw=seg_to_wav(mch); ch_st.update(label="✅ Hazır!",state="complete")
+                st.markdown(f"<div class='card g'>✅ {ch_name} · {fmt_dur(len(mch)/1000)}</div>",unsafe_allow_html=True)
+                st.audio(chw,format="audio/wav"); st.download_button(f"📦 {ch_name}",chw,f"{ch_name}.wav","audio/wav",use_container_width=True,key="dl_ch"); st.balloons()
+
+    with yo3:
+        st.markdown("<div class='card b'>Birden fazla sesi sıralı birleştir → tek WAV</div>",unsafe_allow_html=True)
+        cnt1,cnt2=st.tabs(["📂 Arşivden","📤 Dosya Yükle"])
+        with cnt1:
+            arc_cnt=[e for e in st.session_state._archive if e.get("wav")]
+            if not arc_cnt: st.info("Arşiv boş.")
             else:
-                yc1,yc2=st.columns([1.2,1])
-                with yc1:
-                    yo_sel=st.multiselect("Şarkı Sıralaması",pl_songs_yo,default=pl_songs_yo[:min(3,len(pl_songs_yo))],key="yo_sel")
-                    yo_cf=st.slider("Crossfade ms",0,3000,1200,key="yo_cf"); yo_gap=st.slider("Boşluk ms",0,5000,1500,key="yo_gap")
-                    fon_yo=list_audio(DIRS["fon"]); yo_fon=st.selectbox("Fon",["Yok"]+fon_yo,key="yo_fon")
-                    yo_fvol=st.slider("Fon Ses",-24,0,-8,key="yo_fvol") if yo_fon!="Yok" else -8
-                    yo_duck=st.slider("Duck",-30,-6,-16,key="yo_duck") if yo_fon!="Yok" else -16
-                    yo_name=st.text_input("Yayın Adı",value=f"Yayin_{datetime.datetime.now().strftime('%H%M')}",key="yo_name")
-                with yc2:
-                    st.markdown("<span class='sl'>▶ Anons Ekle</span>",unsafe_allow_html=True)
-                    arc_yo=[e for e in st.session_state._archive if e.get("wav")]
-                    st.markdown(f"<div style='font-size:.67rem;color:#2e3f55;'>Arşivde {len(arc_yo)} ses · Sırayla şarkı başına atanır</div>",unsafe_allow_html=True)
-                    yo_arc=st.checkbox("Arşiv seslerini şarkı başına ekle",key="yo_arc")
-                    yo_up=st.file_uploader("Veya Anons WAV Yükle",type=["wav"],accept_multiple_files=True,key="yo_up")
-                    up_anons=[]
-                    if yo_up:
-                        for uf in yo_up:
-                            _,wv=save_upload(uf,DIRS["anons"],uf.name)
-                            if wv: up_anons.append(wv)
-                        if up_anons: st.success(f"✅ {len(up_anons)} anons yüklendi")
-                if yo_sel and st.button("🚀 YAYIN OLUŞTUR",type="primary",use_container_width=True,key="yo_btn"):
-                    with st.status("🎙️ Yayın oluşturuluyor…",expanded=True) as yo_st:
-                        master=AudioSegment.silent(500)
-                        fon_yo_seg=AudioSegment.from_file(os.path.join(DIRS["fon"],yo_fon)) if yo_fon!="Yok" else None
-                        for idx_y,fn_y in enumerate(yo_sel):
-                            sp_y=os.path.join(DIRS["playlist"],fn_y)
-                            if not os.path.exists(sp_y): st.write(f"⚠️ {fn_y} bulunamadı"); continue
-                            st.write(f"🎵 [{idx_y+1}/{len(yo_sel)}] {fn_y}")
-                            try: sseg=AudioSegment.from_file(sp_y)
-                            except Exception as e: st.write(f"❌ {e}"); continue
-                            an_wav=None
-                            if yo_arc and idx_y<len(arc_yo):
-                                try: an_wav=arc_yo[idx_y]["wav"]
-                                except: pass
-                            elif idx_y<len(up_anons): an_wav=up_anons[idx_y]
-                            if an_wav:
-                                aseg=AudioSegment.from_file(io.BytesIO(an_wav),format="wav")
-                                if fon_yo_seg: blk=mix_fon_voice(fon_yo_seg,aseg,yo_fvol,yo_duck).append(sseg,crossfade=min(yo_cf,len(sseg)//3))
-                                else: blk=aseg+sseg
-                            else: blk=sseg
-                            master=master.append(blk,crossfade=min(yo_cf,len(blk)//3))
-                            if yo_gap>0: master+=AudioSegment.silent(yo_gap)
-                            st.write(f"✅ [{idx_y+1}] Tamamlandı")
-                        master=norm_seg(master); out_yo=seg_to_wav(master); yo_st.update(label="✅ Hazır!",state="complete")
-                    st.markdown(f"<div class='card g'>✅ {yo_name} · {fmt_dur(len(master)/1000)} · {len(yo_sel)} şarkı</div>",unsafe_allow_html=True)
-                    st.audio(out_yo,format="audio/wav"); st.download_button(f"📦 {yo_name} İndir",out_yo,file_name=f"{yo_name}.wav",mime="audio/wav",use_container_width=True,key="dl_yo"); st.balloons()
-
-        with yo2:
-            st.markdown("<div class='card b'>Delay Reji anonsları + Kütüphane şarkıları → Zincir yayın</div>",unsafe_allow_html=True)
-            pl_songs_ch=list_audio(DIRS["playlist"]); fon_ch_list=list_audio(DIRS["fon"])
-            rj_pl=st.session_state._playlist
-            if not pl_songs_ch or not fon_ch_list: st.markdown("<div class='card a'>Şarkı ve fon müziği gerekli.</div>",unsafe_allow_html=True)
-            elif not rj_pl: st.markdown("<div class='card a'>Delay Reji playlist boş.</div>",unsafe_allow_html=True)
-            else:
-                ch_fon=st.selectbox("Fon",fon_ch_list,key="ch_fon"); ch_cf=st.slider("Crossfade",0,2000,1000,key="ch_cf"); ch_name=st.text_input("Yayın Adı",value=f"Zincir_{datetime.datetime.now().strftime('%H%M')}",key="ch_name")
-                anr=[(s,s.get("anons_wav_bas") or s.get("anons_wav_son")) for s in rj_pl if s.get("anons_wav_bas") or s.get("anons_wav_son")]
-                st.markdown(f"<div class='card t'>{len(anr)}/{len(rj_pl)} şarkı için anons hazır</div>",unsafe_allow_html=True)
-                if st.button("🔗 ZİNCİR YAYIN",type="primary",use_container_width=True,key="ch_btn"):
-                    with st.status("🔗 Zincir…",expanded=True) as ch_st:
-                        mch=AudioSegment.silent(500); fch=AudioSegment.from_file(os.path.join(DIRS["fon"],ch_fon))
-                        for i,song in enumerate(rj_pl):
-                            st.write(f"🎵 [{i+1}/{len(rj_pl)}] {song.get('title','?')}")
-                            aw=song.get("anons_wav_bas") or song.get("anons_wav_son"); lf=song.get("local_file")
-                            pf=next((f for f in pl_songs_ch if song.get("title","").lower() in f.lower()),None)
-                            sp=lf if lf and os.path.exists(lf) else (os.path.join(DIRS["playlist"],pf) if pf else None)
-                            if sp and os.path.exists(sp):
-                                try:
-                                    sg=AudioSegment.from_file(sp)
-                                    if aw:
-                                        ag=AudioSegment.from_file(io.BytesIO(aw),format="wav"); blk=mix_fon_voice(fch,ag).append(sg,crossfade=ch_cf)
-                                    else: blk=sg
-                                    mch=mch.append(blk,crossfade=ch_cf); st.write(f"✅ [{i+1}]")
-                                except Exception as e: st.write(f"❌ {e}")
-                            elif aw:
-                                ag2=AudioSegment.from_file(io.BytesIO(aw),format="wav"); mch=mch.append(mix_fon_voice(fch,ag2),crossfade=ch_cf)
-                        mch=norm_seg(mch); chw=seg_to_wav(mch); ch_st.update(label="✅ Hazır!",state="complete")
-                    st.markdown(f"<div class='card g'>✅ {ch_name} · {fmt_dur(len(mch)/1000)}</div>",unsafe_allow_html=True)
-                    st.audio(chw,format="audio/wav"); st.download_button(f"📦 {ch_name}",chw,f"{ch_name}.wav","audio/wav",use_container_width=True,key="dl_ch"); st.balloons()
-
-        with yo3:
-            st.markdown("<div class='card b'>Birden fazla sesi sıralı birleştir → tek WAV</div>",unsafe_allow_html=True)
-            cnt1,cnt2=st.tabs(["📂 Arşivden","📤 Dosya Yükle"])
-            with cnt1:
-                arc_cnt=[e for e in st.session_state._archive if e.get("wav")]
-                if not arc_cnt: st.info("Arşiv boş.")
-                else:
-                    sel_cnt=st.multiselect("Sesler (sıra önemli)",[f"{e['ts_s']} | {e['voice']} | {e['prev'][:30]}" for e in arc_cnt],key="sel_cnt")
-                    cg=st.slider("Boşluk ms",0,3000,500,key="cg"); cf2=st.slider("Crossfade ms",0,2000,200,key="cf2")
-                    if sel_cnt and st.button("🔗 Birleştir",use_container_width=True,key="cnt_arc"):
-                        idxs=[i for i,e in enumerate(arc_cnt) if f"{e['ts_s']} | {e['voice']} | {e['prev'][:30]}" in sel_cnt]
-                        segs=[]; [segs.append(AudioSegment.from_file(io.BytesIO(arc_cnt[i]["wav"]),format="wav")) for i in idxs if True]
-                        if segs:
-                            rc=segs[0]
-                            for sc3 in segs[1:]:
-                                if cg>0: rc+=AudioSegment.silent(cg)
-                                rc=rc.append(sc3,crossfade=cf2) if cf2>0 else rc+sc3
-                            cw=seg_to_wav(norm_seg(rc)); st.success(f"✅ {len(segs)} ses · {fmt_dur(len(rc)/1000)}"); st.audio(cw,format="audio/wav"); st.download_button("📦 WAV",cw,"birlesik.wav","audio/wav",key="dl_cnt_arc")
-            with cnt2:
-                cnt_ups=st.file_uploader("Ses Dosyaları",type=["wav","mp3","ogg"],accept_multiple_files=True,key="cnt_up2")
-                if cnt_ups:
-                    gu=st.slider("Boşluk",0,3000,500,key="gu"); cu=st.slider("Crossfade",0,2000,200,key="cu")
-                    if st.button("🔗 Birleştir",use_container_width=True,key="cnt_up_btn"):
-                        su=[]
-                        for uf in cnt_ups:
-                            try: su.append(AudioSegment.from_file(io.BytesIO(uf.read())))
-                            except Exception as e: st.warning(f"{uf.name}: {e}")
-                        if su:
-                            ru=su[0]
-                            for s in su[1:]:
-                                if gu>0: ru+=AudioSegment.silent(gu)
-                                ru=ru.append(s,crossfade=cu) if cu>0 else ru+s
-                            uw=seg_to_wav(norm_seg(ru)); st.success(f"✅ {len(su)} dosya · {fmt_dur(len(ru)/1000)}"); st.audio(uw,format="audio/wav"); st.download_button("📦 WAV",uw,"upload_birlesik.wav","audio/wav",key="dl_cnt_up")
+                sel_cnt=st.multiselect("Sesler (sıra önemli)",[f"{e['ts_s']} | {e['voice']} | {e['prev'][:30]}" for e in arc_cnt],key="sel_cnt")
+                cg=st.slider("Boşluk ms",0,3000,500,key="cg"); cf2=st.slider("Crossfade ms",0,2000,200,key="cf2")
+                if sel_cnt and st.button("🔗 Birleştir",use_container_width=True,key="cnt_arc"):
+                    idxs=[i for i,e in enumerate(arc_cnt) if f"{e['ts_s']} | {e['voice']} | {e['prev'][:30]}" in sel_cnt]
+                    segs=[]; [segs.append(AudioSegment.from_file(io.BytesIO(arc_cnt[i]["wav"]),format="wav")) for i in idxs if True]
+                    if segs:
+                        rc=segs[0]
+                        for sc3 in segs[1:]:
+                            if cg>0: rc+=AudioSegment.silent(cg)
+                            rc=rc.append(sc3,crossfade=cf2) if cf2>0 else rc+sc3
+                        cw=seg_to_wav(norm_seg(rc)); st.success(f"✅ {len(segs)} ses · {fmt_dur(len(rc)/1000)}"); st.audio(cw,format="audio/wav"); st.download_button("📦 WAV",cw,"birlesik.wav","audio/wav",key="dl_cnt_arc")
+        with cnt2:
+            cnt_ups=st.file_uploader("Ses Dosyaları",type=["wav","mp3","ogg"],accept_multiple_files=True,key="cnt_up2")
+            if cnt_ups:
+                gu=st.slider("Boşluk",0,3000,500,key="gu"); cu=st.slider("Crossfade",0,2000,200,key="cu")
+                if st.button("🔗 Birleştir",use_container_width=True,key="cnt_up_btn"):
+                    su=[]
+                    for uf in cnt_ups:
+                        try: su.append(AudioSegment.from_file(io.BytesIO(uf.read())))
+                        except Exception as e: st.warning(f"{uf.name}: {e}")
+                    if su:
+                        ru=su[0]
+                        for s in su[1:]:
+                            if gu>0: ru+=AudioSegment.silent(gu)
+                            ru=ru.append(s,crossfade=cu) if cu>0 else ru+s
+                        uw=seg_to_wav(norm_seg(ru)); st.success(f"✅ {len(su)} dosya · {fmt_dur(len(ru)/1000)}"); st.audio(uw,format="audio/wav"); st.download_button("📦 WAV",uw,"upload_birlesik.wav","audio/wav",key="dl_cnt_up")
 
 
 # ════════════════ T9 — KÜTÜPHANE ════════════════════════════════
