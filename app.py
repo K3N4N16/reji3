@@ -590,6 +590,14 @@ with st.sidebar:
     st.markdown("<div style='text-align:center;color:#101828;font-size:.61rem;'>İmaj FM v6 · 2026</div>",unsafe_allow_html=True)
 
 # ═══════════════════════════ HEADER ═════════════════════════════
+# Her zaman tüm key'lerin var olduğundan emin ol
+if "calls" not in st.session_state._api_stats: st.session_state._api_stats["calls"]=0
+if "chars" not in st.session_state._api_stats: st.session_state._api_stats["chars"]=0
+if "secs"  not in st.session_state._api_stats: st.session_state._api_stats["secs"]=0.0
+# Eski format uyumluluğu
+if "total_calls" in st.session_state._api_stats: st.session_state._api_stats["calls"]=st.session_state._api_stats.pop("total_calls")
+if "total_chars" in st.session_state._api_stats: st.session_state._api_stats["chars"]=st.session_state._api_stats.pop("total_chars")
+if "total_secs"  in st.session_state._api_stats: st.session_state._api_stats["secs"] =st.session_state._api_stats.pop("total_secs")
 stat_g=st.session_state._api_stats; tk_m,tr_m=pool_stats()
 _,ai_m=get_key(); rem_m=MAX_PER_KEY-st.session_state._api_pool[ai_m]["used"] if ai_m>=0 else 0
 arc_m=len(st.session_state._archive); pl_m=len(st.session_state._playlist)
@@ -599,7 +607,7 @@ st.markdown("""<div class='hdr'><h1>🎙️ İmaj FM · Seslendirme Stüdyosu</h
 
 c8=st.columns(8)
 defs=[("30","Ses"),( f"{tk_m}/10","API","g"),(f"{tr_m}","Kalan","a"),
-      (f"{arc_m}","Arşiv","b"),(f"{stat_g['calls']}","İstek"),
+      (f"{arc_m}","Arşiv","b"),(f"{stat_g.get('calls',0)}","İstek"),
       (f"{stat_g.get('secs',0):.0f}s","Ses","p"),(f"{pl_m}","Playlist","t"),
       (f"{len(pl_songs)}","Şarkı")]
 for col,(val,lbl,*cls) in zip(c8,defs):
@@ -1398,9 +1406,9 @@ with t10:
     st.markdown("<span class='sl'>▶ Oturum İstatistikleri</span>",unsafe_allow_html=True)
     sa1,sa2,sa3,sa4,sa5=st.columns(5)
     with sa1: st.markdown(f'<div class="mbox b"><div class="v">{len(arc)}</div><div class="l">Kayıt</div></div>',unsafe_allow_html=True)
-    with sa2: st.markdown(f'<div class="mbox g"><div class="v">{stat_a["calls"]}</div><div class="l">API Çağrısı</div></div>',unsafe_allow_html=True)
+    with sa2: st.markdown(f'<div class="mbox g"><div class="v">{stat_a.get("calls",0)}</div><div class="l">API Çağrısı</div></div>',unsafe_allow_html=True)
     with sa3: st.markdown(f'<div class="mbox a"><div class="v">{stat_a.get("secs",0):.0f}s</div><div class="l">Üretilen Ses</div></div>',unsafe_allow_html=True)
-    with sa4: st.markdown(f'<div class="mbox p"><div class="v">{stat_a["chars"]:,}</div><div class="l">Karakter</div></div>',unsafe_allow_html=True)
+    with sa4: st.markdown(f'<div class="mbox p"><div class="v">{stat_a.get("chars",0):,}</div><div class="l">Karakter</div></div>',unsafe_allow_html=True)
     with sa5:
         tmb=sum(e["size"] for e in arc)/(1024*1024)
         st.markdown(f'<div class="mbox"><div class="v">{tmb:.1f}MB</div><div class="l">Boyut</div></div>',unsafe_allow_html=True)
