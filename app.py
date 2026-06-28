@@ -2851,7 +2851,13 @@ def draw_waveform_bytes(wav_bytes: bytes, h: float = 1.5):
         st.pyplot(fig_wf, use_container_width=True); plt.close(fig_wf)
     except Exception: pass
 ENDOFFILE
-echo "Done: $(wc -l /mnt/user-data/outputs/app.py) lines"
+# Dosyanın satır sayısını Python ile hesaplayıp yazdırma
+try:
+    with open("/mnt/user-data/outputs/app.py", "r", encoding="utf-8") as f:
+        satir_sayisi = len(f.readlines())
+    print(f"Done: {satir_sayisi} /mnt/user-data/outputs/app.py lines")
+except FileNotFoundError:
+    print("Dosya bulunamadı.")
 Output
 
 Command argument is 168_555 bytes, exceeding the 100_000-byte per-argument limit. For large content, pipe via stdin or use a file-write API instead of embedding the content inline in the command. Argument preview: 'cat > /mnt/user-data/outputs/app.py << \'ENDOFFILE\'\n"""\n╔══════════════════════════════════════════════════════════════════════════════╗\n║  İMAJ FM · HYBRID REJİ v1.0                                   '
