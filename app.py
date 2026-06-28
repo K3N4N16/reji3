@@ -1,6 +1,3 @@
-bash
-
-cat > /mnt/user-data/outputs/app.py << 'ENDOFFILE'
 """
 ╔══════════════════════════════════════════════════════════════════════════════╗
 ║  İMAJ FM · HYBRID REJİ v1.0                                                 ║
