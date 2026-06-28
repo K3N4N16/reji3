@@ -1345,8 +1345,7 @@ elif menu == "🚀 Yayın Otomasyonu":
         mem  = check_memory(name)
 
         art_html = (f' {chip_html(tags["artist"][:16],"purple")}' if tags.get("artist") else "")
-        mem_html = (f' {chip_html(f"♻ {mem[\"count\"]}x","amber")}' if mem else "")
-
+        mem_html = (f""" {chip_html(f'♻ {mem["count"]}x', "amber")}""" if mem else "")
         st.markdown(
             f'<div class="song-row"><span class="song-nm">🎵 {f[:40]}</span>'
             f'{art_html}{mem_html}<span class="song-dur">{fmt_dur(dur)}</span></div>',
