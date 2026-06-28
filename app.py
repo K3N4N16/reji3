@@ -2860,4 +2860,3 @@ except FileNotFoundError:
     print("Dosya bulunamadı.")
 Output
 
-Command argument is 168_555 bytes, exceeding the 100_000-byte per-argument limit. For large content, pipe via stdin or use a file-write API instead of embedding the content inline in the command. Argument preview: 'cat > /mnt/user-data/outputs/app.py << \'ENDOFFILE\'\n"""\n╔══════════════════════════════════════════════════════════════════════════════╗\n║  İMAJ FM · HYBRID REJİ v1.0                                   '
