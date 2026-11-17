@@ -1,8 +1,9 @@
 """
 ╔══════════════════════════════════════════════════════════════════════════════╗
-║  İMAJ FM · TTS STÜDYO  v7.4 — TAM ENTEGRE YAYIN SİSTEMİ                   ║
+║  İMAJ FM · TTS STÜDYO  v7.5 — TAM ENTEGRE YAYIN SİSTEMİ                   ║
 ║  Yüksek Kontrast Koyu & Aydınlık Tema · Gemini Flash 2.5 / 3.1 / 3.8 TTS    ║
-║  AI Anons Yazarı · Anında TTS · Gelişmiş Yayın Otomasyonu (MP3/ID3/Cue)     ║
+║  3 Katmanlı Multi-Speaker Düzeltmesi · AI Anons Yazarı · Anında Hızlı TTS   ║
+║  Gelişmiş Yayın Otomasyonu (Başı/İçi Talk-Over/Sonu · Ducking · MP3/ID3)   ║
 ║  Delay Reji · Fon+Anons · Ses Efektleri & Sinyal · Podcast RSS · Takvim     ║
 ║  RVC Veri Seti · Ses Normalizasyon · Toplu Dönüştürücü                      ║
 ╚══════════════════════════════════════════════════════════════════════════════╝
@@ -73,7 +74,7 @@ for d in DIRS.values():
 
 # ─── PAGE CONFIG ──────────────────────────────────────────────────────────────
 st.set_page_config(
-    page_title="İmaj FM TTS v7.4",
+    page_title="İmaj FM TTS v7.5",
     page_icon="🎙️",
     layout="wide",
     initial_sidebar_state="expanded",
@@ -337,7 +338,6 @@ for _ok_key in [
 ]:
     _si(_ok_key, None)
 
-# Bekleyen favori metin transferini widget'tan önce uygula
 if st.session_state._pending_t_tek is not None:
     st.session_state._t_tek = st.session_state._pending_t_tek
     st.session_state.ta1 = st.session_state._pending_t_tek
@@ -532,7 +532,7 @@ def _run_tts_with_rotation(model: str, fn_call, chars: int):
                 data, mime = fn_call(ak, mdl)
                 consume(ai, chars)
                 if mdl != model:
-                    st.toast(f"ℹ️ '{model}' henüz aktif olmadığı için otomatik olarak '{mdl}' kullanıldı.", icon="🔄")
+                    st.toast(f"ℹ️ '{model}' yerine otomatik '{mdl}' kullanıldı.", icon="🔄")
                 return data, mime, ai
             except Exception as e:
                 err_s = str(e).upper()
@@ -570,32 +570,115 @@ def tts_single(model: str, text: str, voice: str, lang: str, style: str) -> Tupl
 
     return _run_tts_with_rotation(model, _call, len(text))
 
+def _parse_dialogue_turns(text: str, sp1: str, sp2: str) -> List[Tuple[str, str]]:
+    turns: List[Tuple[str, str]] = []
+    cur_sp = sp1
+    for raw_line in text.splitlines():
+        line = raw_line.strip()
+        if not line:
+            continue
+        if line.lower().startswith(f"{sp1.lower()}:"):
+            cur_sp = sp1
+            utt = line[len(sp1) + 1:].strip()
+        elif line.lower().startswith(f"{sp2.lower()}:"):
+            cur_sp = sp2
+            utt = line[len(sp2) + 1:].strip()
+        else:
+            utt = line
+        if utt:
+            turns.append((cur_sp, utt))
+    return turns or [(sp1, text.strip())]
+
 def tts_multi(model: str, text: str, sp1: str, v1: str, sp2: str, v2: str, lang: str) -> Tuple[bytes, str, int]:
     lc = lang if lang != "otomatik" else None
+    turns = _parse_dialogue_turns(text, sp1, sp2)
 
-    def _call(api_key: str, mdl: str):
-        c = genai.Client(api_key=api_key)
-        sc_kwargs = {
-            "multi_speaker_voice_config": types.MultiSpeakerVoiceConfig(
-                speaker_voice_configs=[
-                    types.SpeakerVoiceConfig(speaker=sp1, voice_config=types.VoiceConfig(prebuilt_voice_config=types.PrebuiltVoiceConfig(voice_name=v1))),
-                    types.SpeakerVoiceConfig(speaker=sp2, voice_config=types.VoiceConfig(prebuilt_voice_config=types.PrebuiltVoiceConfig(voice_name=v2))),
-                ]
+    part_fields = getattr(types.Part, "model_fields", {}) if GEMINI_OK else {}
+    has_speech_meta = "speech_metadata" in part_fields
+
+    if has_speech_meta:
+        sm_cls = getattr(types, "SpeechMetadata", None)
+        parts = [
+            types.Part(text=utt, speech_metadata=sm_cls(speaker=sp))
+            if sm_cls is not None
+            else types.Part(text=utt, speech_metadata={"speaker": sp})
+            for sp, utt in turns
+        ]
+        structured_contents = [types.Content(role="user", parts=parts)]
+    else:
+        structured_contents = None
+
+    plain_contents = (
+        f"TTS the following conversation between {sp1} and {sp2}:\n"
+        + "\n".join(f"{sp}: {utt}" for sp, utt in turns)
+    )
+
+    def _make_call(contents_payload):
+        def _call(api_key: str, mdl: str):
+            c = genai.Client(api_key=api_key)
+            sc_kwargs = {
+                "multi_speaker_voice_config": types.MultiSpeakerVoiceConfig(
+                    speaker_voice_configs=[
+                        types.SpeakerVoiceConfig(speaker=sp1, voice_config=types.VoiceConfig(prebuilt_voice_config=types.PrebuiltVoiceConfig(voice_name=v1))),
+                        types.SpeakerVoiceConfig(speaker=sp2, voice_config=types.VoiceConfig(prebuilt_voice_config=types.PrebuiltVoiceConfig(voice_name=v2))),
+                    ]
+                )
+            }
+            if lc:
+                sc_kwargs["language_code"] = lc
+            r = c.models.generate_content(
+                model=mdl,
+                contents=contents_payload,
+                config=types.GenerateContentConfig(
+                    response_modalities=["AUDIO"],
+                    speech_config=types.SpeechConfig(**sc_kwargs),
+                ),
             )
-        }
-        if lc:
-            sc_kwargs["language_code"] = lc
-        r = c.models.generate_content(
-            model=mdl,
-            contents=text,
-            config=types.GenerateContentConfig(
-                response_modalities=["AUDIO"],
-                speech_config=types.SpeechConfig(**sc_kwargs),
-            ),
-        )
-        return _extract_audio_from_response(r)
+            return _extract_audio_from_response(r)
+        return _call
 
-    return _run_tts_with_rotation(model, _call, len(text))
+    # 1) SDK speech_metadata destekliyorsa doğrudan gönder
+    if structured_contents is not None:
+        try:
+            return _run_tts_with_rotation(model, _make_call(structured_contents), len(text))
+        except Exception as e:
+            if "400" not in str(e) and "INVALID_ARGUMENT" not in str(e).upper():
+                raise
+
+    # 2) Klasik düz metin formatını dene
+    try:
+        target_mdl = "gemini-2.5-flash-preview-tts" if model.startswith("gemini-3") else model
+        return _run_tts_with_rotation(target_mdl, _make_call(plain_contents), len(text))
+    except Exception as e:
+        err_u = str(e).upper()
+        if not any(x in err_u for x in ["400", "INVALID_ARGUMENT", "SPEECH_METADATA", "MULTI-SPEAKER"]):
+            raise
+
+    # 3) Kesin Yedek: Konuşmacıları sırayla tts_single ile üretip birleştir
+    st.toast("ℹ️ Çoklu konuşmacı sıralı sentez modunda birleştiriliyor…", icon="🎭")
+    last_ai = 0
+    if PYDUB_OK:
+        merged = AudioSegment.empty()
+        for sp, utt in turns:
+            v_sel = v1 if sp == sp1 else v2
+            rw, mm, last_ai = tts_single(model, utt, v_sel, lang, "")
+            wv = pcm2wav(rw, mm)
+            seg = AudioSegment.from_file(io.BytesIO(wv), format="wav")
+            if len(merged) > 0:
+                merged += AudioSegment.silent(150, frame_rate=seg.frame_rate)
+            merged += seg
+        return seg_to_wav(merged), "audio/wav", last_ai
+    else:
+        pcm_chunks = []
+        for idx_t, (sp, utt) in enumerate(turns):
+            v_sel = v1 if sp == sp1 else v2
+            rw, mm, last_ai = tts_single(model, utt, v_sel, lang, "")
+            if rw[:4] == b"RIFF" and len(rw) > 44:
+                rw = rw[44:]
+            if idx_t > 0:
+                pcm_chunks.append(b"\x00" * (24000 * 2 * 150 // 1000))
+            pcm_chunks.append(rw)
+        return b"".join(pcm_chunks), "audio/L16;rate=24000", last_ai
 
 def ai_write_anons(topic: str, tone: str = "Enerjik radyo sunucusu") -> str:
     if not GEMINI_OK:
@@ -1205,7 +1288,7 @@ def login_page():
     with col:
         st.markdown(f"""<div style='margin-top:60px;padding:32px 28px;background:{CURRENT_THEME['card']};border:1px solid {CURRENT_THEME['border']};border-radius:16px;'>
 <h2 style='text-align:center;font-family:Syne,sans-serif;font-weight:800;font-size:1.5rem;margin:0 0 4px;color:{CURRENT_THEME['text']};'>🎙️ İmaj FM Stüdyo</h2>
-<p style='text-align:center;color:{CURRENT_THEME['muted']};font-size:.75rem;letter-spacing:.12em;margin:0 0 18px;'>TTS & OTOMASYON v7.4 · GÜVENLİ GİRİŞ</p></div>""", unsafe_allow_html=True)
+<p style='text-align:center;color:{CURRENT_THEME['muted']};font-size:.75rem;letter-spacing:.12em;margin:0 0 18px;'>TTS & OTOMASYON v7.5 · GÜVENLİ GİRİŞ</p></div>""", unsafe_allow_html=True)
         u = st.text_input("Kullanıcı Adı", "", placeholder="👤 kullanıcı adı", label_visibility="collapsed")
         p = st.text_input("Şifre", "", type="password", placeholder="🔑 şifre", label_visibility="collapsed")
         try:
@@ -1225,7 +1308,7 @@ if not st.session_state._giris:
 
 # ═══════════════════════════ SIDEBAR ════════════════════════════
 with st.sidebar:
-    st.markdown(f"<div style='text-align:center;padding:4px 0 6px;font-family:Syne,sans-serif;font-size:1rem;font-weight:800;color:{CURRENT_THEME['text']};'>🎙️ İmaj FM <span style='color:{CURRENT_THEME['accent']};font-size:.72rem;'>v7.4</span></div>", unsafe_allow_html=True)
+    st.markdown(f"<div style='text-align:center;padding:4px 0 6px;font-family:Syne,sans-serif;font-size:1rem;font-weight:800;color:{CURRENT_THEME['text']};'>🎙️ İmaj FM <span style='color:{CURRENT_THEME['accent']};font-size:.72rem;'>v7.5</span></div>", unsafe_allow_html=True)
 
     sel_theme = st.selectbox("🎨 Tema", list(THEMES.keys()), index=list(THEMES.keys()).index(st.session_state["_theme_name"]), key="_theme_picker")
     if sel_theme != st.session_state["_theme_name"]:
@@ -1409,7 +1492,7 @@ with t1:
 
 # ════════════════ T2 — ÇİFT KONUŞMACI ══════════════════════════
 with t2:
-    st.markdown("<div class='card b'>🎭 İki konuşmacı — Multi-speaker Gemini TTS · Tek WAV çıktı</div>", unsafe_allow_html=True)
+    st.markdown("<div class='card b'>🎭 İki konuşmacı — Multi-speaker Gemini TTS (Oto 3 katmanlı yedek aktif) · Tek WAV çıktı</div>", unsafe_allow_html=True)
     cL2, cR2 = st.columns([1.05, 1], gap="large")
     with cL2:
         tmpl2 = st.selectbox("Ş2", ["— Yok —"] + list(TEMPLATES.keys()), label_visibility="collapsed", key="tmpl2")
@@ -1920,17 +2003,20 @@ with t8:
                                     st.caption(f"✅ Yüklü: {trk.get('anons_name','Anons')} ({dur_bytes(trk['anons_bytes']):.1f}s)")
                             elif a_src == "🎙️ Anında Hızlı TTS":
                                 trk["anons_arc_id"] = trk["anons_file"] = None
+                                q_key = f"yo_qtxt_{tid}"
+                                if q_key not in st.session_state:
+                                    st.session_state[q_key] = auto_bas(trk)
                                 q_col1, q_col2 = st.columns([2, 1])
                                 with q_col1:
                                     q_vc = st.selectbox("Ses", list(VOICES.keys()), index=list(VOICES.keys()).index("Kore"), key=f"yo_qvc_{tid}")
                                 with q_col2:
                                     if st.button("✨ AI Metin", key=f"yo_qai_{tid}", use_container_width=True):
                                         try:
-                                            st.session_state[f"yo_qtxt_{tid}"] = ai_write_anons(f"{trk['artist']} - {trk['title']}")
+                                            st.session_state[q_key] = ai_write_anons(f"{trk['artist']} - {trk['title']}")
                                             st.rerun()
                                         except Exception as e:
                                             st.error(f"❌ {e}")
-                                q_txt = st.text_area("Anons Metni", value=st.session_state.get(f"yo_qtxt_{tid}", auto_bas(trk)), height=68, key=f"yo_qtxt_{tid}")
+                                q_txt = st.text_area("Anons Metni", height=68, key=q_key)
                                 if st.button("🔴 Anında Seslendir & Ata", key=f"yo_qgen_{tid}", use_container_width=True):
                                     try:
                                         rw_q, mm_q, _ = tts_single("gemini-3.1-flash-tts-preview", q_txt, q_vc, "tr-TR", "")
@@ -2458,7 +2544,7 @@ st.markdown("<hr>", unsafe_allow_html=True)
 tk_f, tr_f = pool_stats()
 st.markdown(
     f"<div style='text-align:center;color:{CURRENT_THEME['muted']};font-size:.72rem;letter-spacing:.06em;padding:6px 0 12px;'>"
-    f"<b>İMAJ FM TTS STÜDYO v7.4</b> · {'✅ Gemini' if GEMINI_OK else '❌ Gemini'} · "
+    f"<b>İMAJ FM TTS STÜDYO v7.5</b> · {'✅ Gemini' if GEMINI_OK else '❌ Gemini'} · "
     f"{'✅ PyDub' if PYDUB_OK else '❌ PyDub'} · {'✅ NumPy' if NP_OK else '❌ NumPy'} · "
     f"{'✅ Mutagen' if MUTAGEN_OK else '❌ Mutagen'} · API: {tk_f}/10 ({tr_f} kalan) · 2026</div>",
     unsafe_allow_html=True,
