@@ -1,10 +1,9 @@
 """
 ╔══════════════════════════════════════════════════════════════════════════════╗
-║  İMAJ FM · TTS STÜDYO  v7.1 — TAM ENTEGRE YAYIN SİSTEMİ                   ║
-║  Gemini TTS · Delay Reji · Fon+Anons Mikseri · Yayın Otomasyonu            ║
-║  Playlist · Toplu TTS · A/B Test · Kütüphane · Arşiv · ZIP                 ║
-║  Ses Efektleri & Sinyal · Podcast RSS · Yayın Takvimi · RVC Hazırlık       ║
-║  Canlı Metin Akışı · Ses Normalizasyon · Toplu Format Dönüştürücü         ║
+║  İMAJ FM · TTS STÜDYO  v7.2 — TAM ENTEGRE YAYIN SİSTEMİ                   ║
+║  Gemini TTS · Delay Reji · Fon+Anons Mikseri · Gelişmiş Yayın Otomasyonu   ║
+║  Şarkı Başı/İçi/Sonu Anons & Ducking · MP3/WAV Master · ID3 · Cue Sheet    ║
+║  Ses Efektleri & Sinyal · Podcast RSS · Yayın Takvimi · RVC · Dönüştürücü  ║
 ╚══════════════════════════════════════════════════════════════════════════════╝
 """
 
@@ -12,7 +11,7 @@ import warnings
 warnings.filterwarnings("ignore", category=SyntaxWarning)
 
 import streamlit as st
-import wave, io, zipfile, re, time, datetime, hashlib, os, json, uuid
+import wave, io, zipfile, re, time, datetime, os, json, uuid, shutil
 from xml.sax.saxutils import escape as xml_escape
 from typing import Optional, Dict, List, Tuple
 
@@ -46,6 +45,7 @@ except ImportError:
 # ─── MUTAGEN (ID3) ────────────────────────────────────────────────────────────
 try:
     from mutagen import File as MutagenFile
+    from mutagen.id3 import ID3, TIT2, TPE1, TALB, ID3NoHeaderError
     MUTAGEN_OK = True
 except ImportError:
     MUTAGEN_OK = False
@@ -72,7 +72,7 @@ for d in DIRS.values():
 
 # ─── PAGE CONFIG ──────────────────────────────────────────────────────────────
 st.set_page_config(
-    page_title="İmaj FM TTS v7",
+    page_title="İmaj FM TTS v7.2",
     page_icon="🎙️",
     layout="wide",
     initial_sidebar_state="expanded",
@@ -107,10 +107,10 @@ html,body,[data-testid="stAppViewContainer"],[data-testid="stApp"],.main{
   color:#10b981;text-transform:uppercase;margin:9px 0 3px;display:block;}
 .mbox{background:#0b0f1a;border:1px solid #131c2e;border-radius:9px;padding:10px;text-align:center;}
 .mbox .v{font-family:'Syne',sans-serif;font-size:1.25rem;font-weight:800;color:#e05252;}
-.mbox .l{font-size:.58rem;letter-spacing:.11em;color:#2e3f55;text-transform:uppercase;margin-top:2px;}
+.mbox .l{font-size:.58rem;letter-spacing:.11em;color:#6b7a8d;text-transform:uppercase;margin-top:2px;}
 .mbox.g .v{color:#22c55e;}.mbox.b .v{color:#3b82f6;}.mbox.a .v{color:#f59e0b;}
 .mbox.p .v{color:#a78bfa;}.mbox.t .v{color:#10b981;}
-.card{background:#0b0f1a;border:1px solid #131c2e;border-radius:8px;padding:10px 13px;margin:6px 0;font-size:.81rem;color:#6b7a8d;}
+.card{background:#0b0f1a;border:1px solid #131c2e;border-radius:8px;padding:10px 13px;margin:6px 0;font-size:.81rem;color:#9aa7b8;}
 .card.b{border-left:3px solid #3a7bd5;}
 .card.g{border-left:3px solid #22c55e;background:#021409;color:#4ade80;}
 .card.a{border-left:3px solid #f59e0b;background:#100d00;color:#fbbf24;}
@@ -142,7 +142,7 @@ html,body,[data-testid="stAppViewContainer"],[data-testid="stApp"],.main{
 .song-dur{font-family:'JetBrains Mono',monospace;font-size:.66rem;color:#6b7a8d;}
 .tl-block{background:#0b0f1a;border:1px solid #131c2e;border-radius:7px;padding:7px 11px;
   margin:3px 0;display:flex;align-items:center;gap:9px;}
-.tl-time{font-family:'JetBrains Mono',monospace;font-size:.7rem;color:#10b981;min-width:46px;}
+.tl-time{font-family:'JetBrains Mono',monospace;font-size:.7rem;color:#10b981;min-width:56px;}
 .tl-type{font-size:.6rem;font-weight:700;letter-spacing:.08em;text-transform:uppercase;
   padding:2px 7px;border-radius:4px;min-width:58px;text-align:center;}
 .ttype-song{background:#071a2e;color:#60a5fa;border:1px solid #1a3a5e;}
@@ -250,6 +250,19 @@ EFFECT_PRESETS = {
 
 EQ_OPTS = ["Ham", "Broadcast", "Warm", "AM", "Podcast", "Vinyl"]
 
+ANONS_POSITIONS = [
+    "⏮️ Şarkı Başı (Önce Anons, Sonra Şarkı)",
+    "🎚️ Şarkı İçi (Başlangıçtan X sn Sonra · Talk-Over)",
+    "🎙️ Şarkı İçi (Bitişten X sn Önce · Outro Üzeri)",
+    "⏭️ Şarkı Sonu (Şarkı Biter, Sonra Anons)",
+]
+
+JINGLE_POSITIONS = [
+    "Şarkı Başı",
+    "Şarkı Sonu",
+    "Anons Öncesi",
+]
+
 # ═══════════════════════════ SESSION STATE ═══════════════════════
 def _si(k, v):
     if k not in st.session_state:
@@ -275,6 +288,7 @@ _si("ab_a_ta", "[excitedly] İmaj FM'e hoş geldiniz!")
 _si("_t_ab2", "[seriously] İmaj FM'e hoş geldiniz.")
 _si("ab_b_ta", "[seriously] İmaj FM'e hoş geldiniz.")
 _si("_playlist", [])
+_si("_yo_tracks", [])  # Yayın Otomasyonu şarkı bazlı liste
 _si("_rj_voice", "Kore")
 _si("_rj_model", "gemini-2.5-flash-tts")
 _si("_rj_lang", "tr-TR")
@@ -284,11 +298,10 @@ _si("_rj_plan", [])
 _si("_rj_plan_ok", False)
 _si("_processed_uploads", set())
 
-# Kalıcı çıktı state'leri (Download butonlarının kaybolmaması için)
 for _ok_key in [
     "_last_tek", "_last_cift", "_last_bulk_manual", "_last_bulk_file",
     "_last_ab_a", "_last_ab_b", "_last_mx", "_last_mx_bulk", "_last_mx_arc",
-    "_last_yo", "_last_ch", "_last_cnt_arc", "_last_cnt_up",
+    "_last_yo", "_last_yo_cue", "_last_ch", "_last_cnt_arc", "_last_cnt_up",
     "_last_ef", "_last_sig", "_last_arc_zip", "_last_rss",
     "_last_rvc_zip", "_last_conv_zip", "_last_norm_zip"
 ]:
@@ -364,16 +377,16 @@ def dur_bytes(wb: bytes) -> float:
 def dur_file(path: str) -> float:
     if not path or not os.path.exists(path):
         return 0.0
-    if PYDUB_OK:
-        try:
-            return len(AudioSegment.from_file(path)) / 1000.0
-        except Exception:
-            pass
     if MUTAGEN_OK:
         try:
             mf = MutagenFile(path)
-            if mf and mf.info:
-                return float(getattr(mf.info, "length", 0.0))
+            if mf and mf.info and getattr(mf.info, "length", 0.0) > 0:
+                return float(mf.info.length)
+        except Exception:
+            pass
+    if PYDUB_OK:
+        try:
+            return len(AudioSegment.from_file(path)) / 1000.0
         except Exception:
             pass
     return 0.0
@@ -435,7 +448,7 @@ def _extract_audio_from_response(resp) -> Tuple[bytes, str]:
         raise RuntimeError("API boş yanıt döndürdü.")
     cand = resp.candidates[0]
     if not getattr(cand, "content", None) or not getattr(cand.content, "parts", None):
-        raise RuntimeError("API yanıtında ses içeriği bulunamadı (güvenlik filtresi veya boş içerik).")
+        raise RuntimeError("API yanıtında ses içeriği bulunamadı.")
     for part in cand.content.parts:
         inl = getattr(part, "inline_data", None)
         if inl and getattr(inl, "data", None):
@@ -446,7 +459,6 @@ def _extract_audio_from_response(resp) -> Tuple[bytes, str]:
 def pcm2wav(raw_data: bytes, mime_type: str = "", rate: int = 24000, ch: int = 1, sw: int = 2) -> bytes:
     if not raw_data:
         return b""
-    # Zaten WAV başlığı varsa tekrar sarmalama
     if raw_data[:4] == b"RIFF" and len(raw_data) > 44:
         return raw_data
     if mime_type:
@@ -547,8 +559,13 @@ def tts_multi(model: str, text: str, sp1: str, v1: str, sp2: str, v2: str, lang:
 
     return _run_tts_with_rotation(_call, len(text))
 
-# ═══════════════════════════ PYDUB YARDIMCI ══════════════════════
-def norm_seg(seg, db: float = -16.0):
+# ═══════════════════════════ PYDUB & YAYIN DSP MOTORU ════════════
+def unify_seg(seg, sr: int = 44100, ch: int = 2, sw: int = 2):
+    if not PYDUB_OK or seg is None:
+        return seg
+    return seg.set_frame_rate(sr).set_channels(ch).set_sample_width(sw)
+
+def norm_seg(seg, db: float = -14.0):
     if not PYDUB_OK or seg is None or len(seg) == 0:
         return seg
     try:
@@ -565,6 +582,8 @@ def safe_append(seg1, seg2, crossfade_ms: int = 0):
         return seg2
     if seg2 is None or len(seg2) == 0:
         return seg1
+    seg1 = unify_seg(seg1)
+    seg2 = unify_seg(seg2)
     cf = min(int(crossfade_ms), max(0, len(seg1) // 3), max(0, len(seg2) // 3))
     if cf >= 10:
         return seg1.append(seg2, crossfade=cf)
@@ -613,25 +632,19 @@ def apply_effect(seg, params: Dict):
                 amp = (2 ** (8 * sw - 1) - 1) * min(noise_lvl, 0.25)
                 noise_arr = np.random.normal(0, amp, n_samples).clip(-32767, 32767).astype(np.int16)
                 noise_seg = AudioSegment(
-                    noise_arr.tobytes(),
-                    frame_rate=sr,
-                    sample_width=2,
-                    channels=ch,
+                    noise_arr.tobytes(), frame_rate=sr, sample_width=2, channels=ch
                 )
                 seg = seg.overlay(noise_seg)
         return norm_seg(seg)
     except Exception:
         return seg
 
-def mix_fon_voice(fon_seg, voice_seg, fon_vol=-8, duck_db=-16, fi=800, fo=1200):
+def mix_fon_voice(fon_seg, voice_seg, fon_vol=-8, duck_db=-16, fi=600, fo=1200):
     if not PYDUB_OK:
         return voice_seg
     try:
-        # Kanal ve örnekleme hızı eşitleme
-        target_sr = max(fon_seg.frame_rate, voice_seg.frame_rate, 44100)
-        target_ch = max(fon_seg.channels, voice_seg.channels)
-        fon = fon_seg.set_frame_rate(target_sr).set_channels(target_ch) + fon_vol
-        voice = voice_seg.set_frame_rate(target_sr).set_channels(target_ch)
+        fon = norm_seg(unify_seg(fon_seg), -14.0) + fon_vol
+        voice = norm_seg(unify_seg(voice_seg), -13.0)
 
         vl = len(voice)
         if vl == 0:
@@ -640,32 +653,203 @@ def mix_fon_voice(fon_seg, voice_seg, fon_vol=-8, duck_db=-16, fi=800, fo=1200):
         if fl == 0:
             return voice
 
-        tail_ms = 2000
-        if fl < vl + tail_ms:
-            loops = (vl + tail_ms) // fl + 1
-            fon = fon * loops
-        fon = fon[:vl + tail_ms]
+        lead_ms = 500
+        tail_ms = 1800
+        total_need = lead_ms + vl + tail_ms
+        if fl < total_need:
+            fon = fon * (total_need // fl + 1)
+        fon = fon[:total_need]
         if fi > 0 and len(fon) > fi:
             fon = fon.fade_in(fi)
 
-        fp = fon[:vl]
-        fr = fon[vl:]
-        fm = min(500, vl // 4)
+        f_pre = fon[:lead_ms]
+        f_mid = fon[lead_ms:lead_ms + vl]
+        f_post = fon[lead_ms + vl:]
+
+        fm = min(400, vl // 4)
         if fm >= 15 and vl > 2 * fm:
-            ducked = (
-                fp[:fm].fade(to_gain=duck_db, start=0, duration=fm)
-                + (fp[fm:vl - fm] + duck_db)
-                + fp[vl - fm:].fade(from_gain=duck_db, start=0, duration=fm)
+            ducked_mid = (
+                f_mid[:fm].fade(to_gain=duck_db, start=0, duration=fm)
+                + (f_mid[fm:vl - fm] + duck_db)
+                + f_mid[vl - fm:].fade(from_gain=duck_db, start=0, duration=fm)
             )
         else:
-            ducked = fp + duck_db
+            ducked_mid = f_mid + duck_db
 
-        if fo > 0 and len(fr) > 10:
-            fr = fr.fade_out(min(fo, len(fr)))
+        if fo > 0 and len(f_post) > 10:
+            f_post = f_post.fade_out(min(fo, len(f_post)))
 
-        return norm_seg(ducked.overlay(voice) + fr)
+        full_fon = f_pre + ducked_mid + f_post
+        return norm_seg(full_fon.overlay(voice, position=lead_ms), -14.0)
     except Exception:
         return voice_seg
+
+def duck_and_overlay(music_seg, voice_seg, pos_ms: int, duck_db: float = -16.0, ramp_ms: int = 450, voice_gain_db: float = 1.5):
+    """Şarkı üzerine yumuşak müzik kısma (Ducking / Talk-Over) ile anons bindirme."""
+    if not PYDUB_OK:
+        return music_seg
+    music = norm_seg(unify_seg(music_seg), -14.0)
+    voice = norm_seg(unify_seg(voice_seg), -13.5 + voice_gain_db)
+    if len(voice) == 0:
+        return music
+
+    pos_ms = max(0, int(pos_ms))
+    needed_len = pos_ms + len(voice) + 200
+    if len(music) < needed_len:
+        music = music + AudioSegment.silent(duration=needed_len - len(music), frame_rate=44100).set_channels(2).set_sample_width(2)
+
+    half_r = ramp_ms // 2
+    start_duck = max(0, pos_ms - half_r)
+    end_duck = min(len(music), pos_ms + len(voice) + half_r)
+
+    seg_pre = music[:start_duck]
+    seg_mid = music[start_duck:end_duck]
+    seg_post = music[end_duck:]
+
+    r = min(ramp_ms, len(seg_mid) // 3)
+    if r >= 15 and len(seg_mid) > 2 * r:
+        mid_ducked = (
+            seg_mid[:r].fade(to_gain=duck_db, start=0, duration=r)
+            + (seg_mid[r:len(seg_mid) - r] + duck_db)
+            + seg_mid[len(seg_mid) - r:].fade(from_gain=duck_db, start=0, duration=r)
+        )
+    else:
+        mid_ducked = seg_mid + duck_db
+
+    ducked_music = seg_pre + mid_ducked + seg_post
+    return ducked_music.overlay(voice, position=pos_ms)
+
+def build_track_audio(track: Dict, crossfade_ms: int = 1200) -> Tuple[Optional[object], List[str]]:
+    """Tek bir şarkıyı Jingle + Fon + Anons (Başı / İçi / Sonu / Ek Son) ayarlarıyla üretir."""
+    notes = []
+    song_path = track.get("path")
+    if not song_path or not os.path.exists(song_path):
+        return None, ["Şarkı dosyası bulunamadı"]
+
+    song_seg = norm_seg(unify_seg(AudioSegment.from_file(song_path)), -14.0)
+    duck_db = float(track.get("duck_db", -16.0))
+    anons_gain = float(track.get("anons_gain_db", 1.5))
+    ramp_ms = int(track.get("ramp_ms", 450))
+    fon_vol = float(track.get("fon_vol_db", -8.0))
+
+    # Fon segmentini çöz
+    fon_seg = None
+    if track.get("fon_bytes"):
+        fon_seg = AudioSegment.from_file(io.BytesIO(track["fon_bytes"]))
+    elif track.get("fon_file") and os.path.exists(os.path.join(DIRS["fon"], track["fon_file"])):
+        fon_seg = AudioSegment.from_file(os.path.join(DIRS["fon"], track["fon_file"]))
+
+    # Jingle segmentini çöz
+    jingle_seg = None
+    if track.get("jingle_bytes"):
+        jingle_seg = norm_seg(unify_seg(AudioSegment.from_file(io.BytesIO(track["jingle_bytes"]))), -14.0)
+    elif track.get("jingle_file") and os.path.exists(os.path.join(DIRS["jingles"], track["jingle_file"])):
+        jingle_seg = norm_seg(unify_seg(AudioSegment.from_file(os.path.join(DIRS["jingles"], track["jingle_file"]))), -14.0)
+    jingle_pos = track.get("jingle_pos", "Şarkı Başı")
+
+    # Ana Anons segmentini çöz
+    anons_seg = None
+    if track.get("anons_bytes"):
+        anons_seg = AudioSegment.from_file(io.BytesIO(track["anons_bytes"]))
+    elif track.get("anons_file") and os.path.exists(os.path.join(DIRS["anons"], track["anons_file"])):
+        anons_seg = AudioSegment.from_file(os.path.join(DIRS["anons"], track["anons_file"]))
+    elif track.get("anons_arc_id"):
+        ent = next((e for e in st.session_state._archive if e["id"] == track["anons_arc_id"]), None)
+        if ent and ent.get("wav"):
+            anons_seg = AudioSegment.from_file(io.BytesIO(ent["wav"]))
+
+    # Ek Bitiş Anonsu (opsiyonel)
+    end_anons_seg = None
+    if track.get("end_anons_enabled"):
+        if track.get("end_anons_bytes"):
+            end_anons_seg = AudioSegment.from_file(io.BytesIO(track["end_anons_bytes"]))
+        elif track.get("end_anons_arc_id"):
+            ent2 = next((e for e in st.session_state._archive if e["id"] == track["end_anons_arc_id"]), None)
+            if ent2 and ent2.get("wav"):
+                end_anons_seg = AudioSegment.from_file(io.BytesIO(ent2["wav"]))
+
+    pre_block = AudioSegment.empty()
+    post_block = AudioSegment.empty()
+
+    # Anons konumu uygula
+    pos_mode = track.get("anons_pos", ANONS_POSITIONS[0])
+    offset_sec = float(track.get("anons_offset_sec", 8.0))
+
+    if anons_seg is not None:
+        anons_u = norm_seg(unify_seg(anons_seg), -13.5 + anons_gain)
+        if pos_mode.startswith("⏮️"):  # Şarkı Başı
+            anons_blk = mix_fon_voice(fon_seg, anons_u, fon_vol, duck_db) if fon_seg is not None else anons_u
+            if jingle_seg is not None and jingle_pos == "Anons Öncesi":
+                pre_block = safe_append(jingle_seg, anons_blk, min(400, crossfade_ms))
+                notes.append("Jingle → Anons (Başı)")
+            else:
+                pre_block = anons_blk
+                notes.append("Anons (Başı)" + (" + Fon" if fon_seg is not None else ""))
+        elif "Başlangıçtan" in pos_mode:  # Talk-Over baştan X sn sonra
+            pos_ms = int(offset_sec * 1000)
+            song_seg = duck_and_overlay(song_seg, anons_u, pos_ms, duck_db, ramp_ms, anons_gain)
+            notes.append(f"Talk-Over @{offset_sec:.1f}s ({duck_db:.0f}dB)")
+        elif "Bitişten" in pos_mode:  # Talk-Over bitişten X sn önce
+            pos_ms = max(0, len(song_seg) - int(offset_sec * 1000))
+            song_seg = duck_and_overlay(song_seg, anons_u, pos_ms, duck_db, ramp_ms, anons_gain)
+            notes.append(f"Outro Üzeri -{offset_sec:.1f}s ({duck_db:.0f}dB)")
+        elif pos_mode.startswith("⏭️"):  # Şarkı Sonu
+            anons_blk = mix_fon_voice(fon_seg, anons_u, fon_vol, duck_db) if fon_seg is not None else anons_u
+            post_block = anons_blk
+            notes.append("Anons (Sonu)" + (" + Fon" if fon_seg is not None else ""))
+
+    # Ek Bitiş Anonsu varsa
+    if end_anons_seg is not None:
+        end_u = norm_seg(unify_seg(end_anons_seg), -13.5 + anons_gain)
+        end_blk = mix_fon_voice(fon_seg, end_u, fon_vol, duck_db) if fon_seg is not None else end_u
+        post_block = safe_append(post_block, end_blk, 300) if len(post_block) > 0 else end_blk
+        notes.append("+ Ek Son Anons")
+
+    # Jingle yerleştirme (Şarkı Başı / Şarkı Sonu)
+    if jingle_seg is not None:
+        if jingle_pos == "Şarkı Başı":
+            pre_block = safe_append(pre_block, jingle_seg, 300) if len(pre_block) > 0 else jingle_seg
+            notes.append("Jingle (Baş)")
+        elif jingle_pos == "Şarkı Sonu":
+            post_block = safe_append(jingle_seg, post_block, 300) if len(post_block) > 0 else jingle_seg
+            notes.append("Jingle (Son)")
+
+    combined = song_seg
+    if len(pre_block) > 0:
+        combined = safe_append(pre_block, combined, min(crossfade_ms, 800))
+    if len(post_block) > 0:
+        combined = safe_append(combined, post_block, min(crossfade_ms, 800))
+
+    return combined, notes
+
+def export_audio_bytes(seg, fmt: str = "mp3", bitrate: str = "192k", title: str = "İmaj FM Yayın") -> Tuple[bytes, str]:
+    """AudioSegment'i MP3 (ID3 etiketli) veya WAV byte'ına dönüştürür."""
+    buf = io.BytesIO()
+    if fmt.lower() == "mp3":
+        try:
+            tmp_mp3 = os.path.join(DIRS["output"], f"_tmp_{uuid.uuid4().hex[:8]}.mp3")
+            seg.export(tmp_mp3, format="mp3", bitrate=bitrate)
+            if MUTAGEN_OK:
+                try:
+                    try:
+                        tags = ID3(tmp_mp3)
+                    except ID3NoHeaderError:
+                        tags = ID3()
+                    tags.add(TIT2(encoding=3, text=title))
+                    tags.add(TPE1(encoding=3, text="İmaj FM Otomasyon"))
+                    tags.add(TALB(encoding=3, text=f"İmaj FM Yayın ({datetime.date.today().strftime('%d.%m.%Y')})"))
+                    tags.save(tmp_mp3)
+                except Exception:
+                    pass
+            with open(tmp_mp3, "rb") as f:
+                data = f.read()
+            if os.path.exists(tmp_mp3):
+                os.remove(tmp_mp3)
+            return data, "mp3"
+        except Exception as e:
+            st.warning(f"⚠️ MP3 kodlama hatası ({e}), WAV formatına geçildi.")
+    seg.export(buf, format="wav")
+    return buf.getvalue(), "wav"
 
 def seg_to_wav(seg) -> bytes:
     if not PYDUB_OK or seg is None:
@@ -773,7 +957,7 @@ def save_upload(uf, dest_dir: str, custom_name: str = "", convert_to_wav: bool =
                 wd = os.path.splitext(dest)[0] + '.wav'
                 seg.export(wd, format='wav')
                 if wd != dest and os.path.exists(dest):
-                    os.remove(dest)  # Kütüphanede çift kayıt oluşmasını önle
+                    os.remove(dest)
                 with open(wd, 'rb') as f:
                     return wd, f.read()
             except Exception:
@@ -868,6 +1052,39 @@ def build_plan(playlist: List[Dict], start: str) -> List[Dict]:
             cur += ad
     return plan
 
+def make_yo_track(path: str, title: str = "", artist: str = "") -> Dict:
+    meta = read_id3_meta(path)
+    d = dur_file(path)
+    return {
+        "id": song_uid(),
+        "path": path,
+        "title": title or meta["title"],
+        "artist": artist or meta["artist"],
+        "dur": d,
+        "anons_src": "Yok",
+        "anons_arc_id": None,
+        "anons_file": None,
+        "anons_bytes": None,
+        "anons_name": "",
+        "anons_pos": ANONS_POSITIONS[1],  # Varsayılan: Talk-Over
+        "anons_offset_sec": 6.0,
+        "end_anons_enabled": False,
+        "end_anons_src": "Arşiv",
+        "end_anons_arc_id": None,
+        "end_anons_bytes": None,
+        "fon_src": "Yok",
+        "fon_file": None,
+        "fon_bytes": None,
+        "fon_vol_db": -8.0,
+        "jingle_src": "Yok",
+        "jingle_file": None,
+        "jingle_bytes": None,
+        "jingle_pos": "Şarkı Başı",
+        "duck_db": -16.0,
+        "anons_gain_db": 1.5,
+        "ramp_ms": 450,
+    }
+
 # ═══════════════════════════ YENİ MODÜL FONKSİYONLARI ════════════
 def generate_podcast_rss(title: str, desc: str, author: str, base_url: str, episodes: List[Dict], output_path: str) -> Optional[str]:
     try:
@@ -909,14 +1126,9 @@ def schedule_broadcast(name: str, date_str: str, broadcast_time: str, songs: Lis
     try:
         uid = f"s_{int(time.time())}_{uuid.uuid4().hex[:4]}_{sfn(name)}.json"
         d = {
-            "id": uid,
-            "name": name,
-            "date": date_str,
-            "time": broadcast_time,
-            "songs": songs,
-            "notes": notes,
-            "created": datetime.datetime.now().isoformat(),
-            "status": "pending"
+            "id": uid, "name": name, "date": date_str, "time": broadcast_time,
+            "songs": songs, "notes": notes,
+            "created": datetime.datetime.now().isoformat(), "status": "pending"
         }
         with open(os.path.join(DIRS["schedules"], uid), "w", encoding="utf-8") as fh:
             json.dump(d, fh, ensure_ascii=False, indent=2)
@@ -986,7 +1198,6 @@ def prepare_rvc_dataset(audio_paths: List[str], output_dir: str, chunk_sec: int 
         return 0
 
 def live_text_flow(text: str, delay: float = 0.03):
-    """Canlı metin akışı (Teleprompter)"""
     placeholder = st.empty()
     words = text.split(" ")
     acc = ""
@@ -1052,7 +1263,7 @@ def login_page():
     with col:
         st.markdown("""<div style='margin-top:60px;padding:32px 28px;background:#0b0f1a;border:1px solid #1a2d4a;border-radius:16px;box-shadow:0 20px 60px rgba(0,0,0,.8);'>
 <h2 style='text-align:center;font-family:Syne,sans-serif;font-weight:800;font-size:1.45rem;margin:0 0 3px;background:linear-gradient(90deg,#fff 20%,#ff6060);-webkit-background-clip:text;-webkit-text-fill-color:transparent;'>🎙️ İmaj FM</h2>
-<p style='text-align:center;color:#6b7a8d;font-size:.68rem;letter-spacing:.15em;margin:0 0 22px;'>TTS STÜDYO v7 · GÜVENLİ GİRİŞ</p></div>""", unsafe_allow_html=True)
+<p style='text-align:center;color:#6b7a8d;font-size:.68rem;letter-spacing:.15em;margin:0 0 22px;'>TTS STÜDYO v7.2 · GÜVENLİ GİRİŞ</p></div>""", unsafe_allow_html=True)
         u = st.text_input("u", "", placeholder="👤 kullanıcı adı", label_visibility="collapsed")
         p = st.text_input("p", "", type="password", placeholder="🔑 şifre", label_visibility="collapsed")
         try:
@@ -1075,7 +1286,7 @@ if not st.session_state._giris:
 with st.sidebar:
     st.markdown("""<div style='text-align:center;padding:4px 0 10px;'>
 <span style='font-family:Syne,sans-serif;font-size:.92rem;font-weight:800;background:linear-gradient(90deg,#fff,#ff6060);-webkit-background-clip:text;-webkit-text-fill-color:transparent;'>🎙️ İmaj FM</span>
-<span style='font-size:.6rem;color:#6b7a8d;letter-spacing:.1em;'> TTS v7.1</span></div>""", unsafe_allow_html=True)
+<span style='font-size:.6rem;color:#6b7a8d;letter-spacing:.1em;'> TTS v7.2</span></div>""", unsafe_allow_html=True)
 
     ak_sb, ai_sb = get_key()
     tk_sb, tr_sb = pool_stats()
@@ -1096,8 +1307,6 @@ with st.sidebar:
 <div style='font-size:.6rem;color:#6b7a8d;margin-top:2px;'>Otomatik rotasyon & 429 geçiş aktif</div></div>""", unsafe_allow_html=True)
         else:
             st.markdown("<div class='card r'>⛔ API yok!</div>", unsafe_allow_html=True)
-        with st.expander("📋 Secrets Formatı", expanded=False):
-            st.code('GEMINI_API_KEY_1 = "AIza..."', language="toml")
         for i in range(10):
             slot = st.session_state._api_pool[i]
             used_i = slot["used"]
@@ -1135,33 +1344,25 @@ with st.sidebar:
                         st.session_state._api_pool[i] = {"key": "", "used": 0, "label": f"API {i+1}"}
                         st.rerun()
 
-    pl_cnt = len(st.session_state._playlist)
-    with st.expander(f"📻 Reji Playlist · {pl_cnt} şarkı", expanded=False):
-        if not st.session_state._playlist:
-            st.caption("Boş. Delay Reji sekmesinden ekleyin.")
+    yo_cnt = len(st.session_state._yo_tracks)
+    with st.expander(f"🚀 Otomasyon Akışı · {yo_cnt} şarkı", expanded=False):
+        if not st.session_state._yo_tracks:
+            st.caption("Boş. Yayın Otomasyon sekmesinden şarkı ekleyin.")
         else:
-            for i, s in enumerate(st.session_state._playlist[:8]):
-                b = ""
-                if s.get("anons_bas"):
-                    b += "🎙️B "
-                if s.get("anons_son"):
-                    b += "🎙️S "
-                if s.get("fon_aktif"):
-                    b += "🎶 "
-                st.markdown(f"<div style='font-size:.68rem;color:#6b7a8d;padding:2px 0;border-bottom:1px solid #0d1420;'>{i+1}. <b style='color:#60a5fa;'>{s.get('title','?')[:18]}</b> {b}</div>", unsafe_allow_html=True)
+            for i, yt in enumerate(st.session_state._yo_tracks[:8]):
+                st.markdown(f"<div style='font-size:.68rem;color:#6b7a8d;padding:2px 0;border-bottom:1px solid #0d1420;'>{i+1}. <b style='color:#22c55e;'>{yt['title'][:18]}</b> ({fmt_dur(yt['dur'])})</div>", unsafe_allow_html=True)
 
     pl_songs = list_audio(DIRS["playlist"])
     fon_files = list_audio(DIRS["fon"])
     with st.expander(f"📂 Kütüphane · {len(pl_songs)} şarkı · {len(fon_files)} fon", expanded=False):
-        arc_cnt = len(st.session_state._archive)
-        st.caption(f"Arşiv: {arc_cnt} ses · Çıktı: {len(list_audio(DIRS['output']))}")
+        st.caption(f"Arşiv: {len(st.session_state._archive)} ses · Jingle: {len(list_audio(DIRS['jingles']))}")
 
     if st.button("🚪 Çıkış Yap", use_container_width=True, key="logout_btn"):
         st.session_state._giris = False
         st.rerun()
 
     st.markdown("<hr>", unsafe_allow_html=True)
-    st.markdown("<div style='text-align:center;color:#4b5c74;font-size:.61rem;'>İmaj FM v7.1 · 2026</div>", unsafe_allow_html=True)
+    st.markdown("<div style='text-align:center;color:#4b5c74;font-size:.61rem;'>İmaj FM v7.2 · 2026</div>", unsafe_allow_html=True)
 
 # ═══════════════════════════ HEADER ═════════════════════════════
 stat_g = st.session_state._api_stats
@@ -1169,15 +1370,15 @@ tk_m, tr_m = pool_stats()
 ak_chk, ai_m = get_key()
 rem_m = MAX_PER_KEY - st.session_state._api_pool[ai_m]["used"] if ai_m >= 0 else 0
 arc_m = len(st.session_state._archive)
-pl_m = len(st.session_state._playlist)
+yo_m = len(st.session_state._yo_tracks)
 
-st.markdown("""<div class='hdr'><h1>🎙️ İmaj FM · Seslendirme Stüdyosu</h1>
-<p><span class='ldot'></span>Gemini TTS v7.1 · Delay Reji · Yayın Otomasyonu · Fon+Anons · Ses Efektleri · RVC · Dönüştürücü</p></div>""", unsafe_allow_html=True)
+st.markdown("""<div class='hdr'><h1>🎙️ İmaj FM · Seslendirme & Yayın Otomasyon Stüdyosu</h1>
+<p><span class='ldot'></span>Gemini TTS v7.2 · Akıllı Şarkı İçi/Başı/Sonu Anons & Ducking · MP3 Yayın Çıktısı · Delay Reji · Ses Efektleri</p></div>""", unsafe_allow_html=True)
 
 c8 = st.columns(8)
 defs = [("30", "Ses"), (f"{tk_m}/10", "API", "g"), (f"{tr_m}", "Kalan", "a"),
         (f"{arc_m}", "Arşiv", "b"), (f"{stat_g.get('calls', 0)}", "İstek"),
-        (f"{stat_g.get('secs', 0):.0f}s", "Ses", "p"), (f"{pl_m}", "Playlist", "t"),
+        (f"{stat_g.get('secs', 0):.0f}s", "Ses", "p"), (f"{yo_m}", "Otomasyon", "t"),
         (f"{len(pl_songs)}", "Şarkı")]
 for col, (val, lbl, *cls) in zip(c8, defs):
     c = cls[0] if cls else ""
@@ -1186,9 +1387,9 @@ for col, (val, lbl, *cls) in zip(c8, defs):
 st.markdown("<br>", unsafe_allow_html=True)
 
 if not GEMINI_OK:
-    st.error("⚠️ `google-genai` kütüphanesi kurulu değil! `pip install google-genai` ile kurun (TTS dışındaki araçlar çalışmaya devam eder).")
+    st.error("⚠️ `google-genai` kütüphanesi kurulu değil! `pip install google-genai` ile kurun.")
 elif ak_chk is None:
-    st.warning("⛔ Kullanılabilir API anahtarı yok! TTS üretimi için sol panelden anahtar ekleyin veya kotayı sıfırlayın.")
+    st.warning("⛔ API anahtarı yok! TTS üretimi için sol panelden anahtar ekleyin (Otomasyon araçları anahtarsız da çalışır).")
 elif rem_m <= 2:
     st.warning(f"⚠️ API {ai_m+1} limitine yakın ({rem_m} kaldı).")
 
@@ -1237,12 +1438,8 @@ with t1:
                 cur_t = st.session_state.get("ta1", st.session_state._t_tek)
                 if fname1.strip() and cur_t.strip():
                     st.session_state._favorites.append({
-                        "id": uuid.uuid4().hex[:8],
-                        "name": fname1.strip(),
-                        "text": cur_t,
-                        "voice": vc1,
-                        "model": mdl1,
-                        "lang": lng1
+                        "id": uuid.uuid4().hex[:8], "name": fname1.strip(), "text": cur_t,
+                        "voice": vc1, "model": mdl1, "lang": lng1
                     })
                     st.success("⭐ Eklendi!")
                     time.sleep(0.3)
@@ -1558,19 +1755,12 @@ with t6:
             if st.button("➕ Ekle", use_container_width=True, key="add_song"):
                 if nt.strip():
                     st.session_state._playlist.append({
-                        "id": song_uid(),
-                        "title": nt.strip(),
-                        "artist": na.strip() or "Bilinmeyen",
-                        "duration_min": int(ndm),
-                        "duration_sec": int(nds),
-                        "anons_bas": False,
-                        "anons_son": False,
-                        "anons_bas_text": "",
-                        "anons_son_text": "",
-                        "fon_aktif": False,
-                        "fon_tip": "📻 Radyo Klasik",
-                        "anons_wav_bas": None,
-                        "anons_wav_son": None
+                        "id": song_uid(), "title": nt.strip(), "artist": na.strip() or "Bilinmeyen",
+                        "duration_min": int(ndm), "duration_sec": int(nds),
+                        "anons_bas": False, "anons_son": False,
+                        "anons_bas_text": "", "anons_son_text": "",
+                        "fon_aktif": False, "fon_tip": "📻 Radyo Klasik",
+                        "anons_wav_bas": None, "anons_wav_son": None
                     })
                     st.session_state._rj_plan_ok = False
                     st.rerun()
@@ -1579,12 +1769,9 @@ with t6:
         with bb:
             if st.button("🎲 Demo Playlist", use_container_width=True, key="demo_pl"):
                 demos = [
-                    ("Gece Yarısı", "Sezen Aksu", 3, 45),
-                    ("Yüksek Yüksek Tepelere", "Barış Manço", 4, 12),
-                    ("Oy Benim Sarı Turnam", "Neşet Ertaş", 3, 55),
-                    ("Hayatımın Anlamı", "MFÖ", 3, 28),
-                    ("Leylim Ley", "Zülfü Livaneli", 4, 5),
-                    ("Mavi Bisiklet", "Sıla", 3, 48),
+                    ("Gece Yarısı", "Sezen Aksu", 3, 45), ("Yüksek Yüksek Tepelere", "Barış Manço", 4, 12),
+                    ("Oy Benim Sarı Turnam", "Neşet Ertaş", 3, 55), ("Hayatımın Anlamı", "MFÖ", 3, 28),
+                    ("Leylim Ley", "Zülfü Livaneli", 4, 5), ("Mavi Bisiklet", "Sıla", 3, 48),
                     ("Seni Bana Verecekler", "Tarkan", 4, 20)
                 ]
                 st.session_state._playlist = [{
@@ -1612,16 +1799,12 @@ with t6:
                     meta = read_id3_meta(dp)
                     added += 1
                     st.session_state._playlist.append({
-                        "id": song_uid(),
-                        "title": meta["title"],
-                        "artist": meta["artist"],
-                        "duration_min": mn,
-                        "duration_sec": sc,
+                        "id": song_uid(), "title": meta["title"], "artist": meta["artist"],
+                        "duration_min": mn, "duration_sec": sc,
                         "anons_bas": False, "anons_son": False,
                         "anons_bas_text": "", "anons_son_text": "",
                         "fon_aktif": False, "fon_tip": "📻 Radyo Klasik",
-                        "anons_wav_bas": None, "anons_wav_son": None,
-                        "local_file": dp
+                        "anons_wav_bas": None, "anons_wav_son": None, "local_file": dp
                     })
             if added:
                 st.success(f"✅ {added} şarkı ID3 bilgileriyle eklendi!")
@@ -1648,30 +1831,20 @@ with t6:
             with pm5:
                 st.markdown(f'<div class="mbox g"><div class="v">{fc}</div><div class="l">Fon</div></div>', unsafe_allow_html=True)
 
-            # İnteraktif Sıra Düzenleyici
             with st.expander("🔀 Hızlı Sıra & Anons Düzenleyici (Tablo)", expanded=False):
                 rows = [
                     {
-                        "Sıra": i + 1,
-                        "Şarkı": s["title"],
-                        "Sanatçı": s["artist"],
+                        "Sıra": i + 1, "Şarkı": s["title"], "Sanatçı": s["artist"],
                         "Baş Anons": bool(s.get("anons_bas", False)),
                         "Son Anons": bool(s.get("anons_son", False)),
-                        "Fon": bool(s.get("fon_aktif", False)),
-                        "_idx": i,
+                        "Fon": bool(s.get("fon_aktif", False)), "_idx": i,
                     }
                     for i, s in enumerate(pl)
                 ]
                 edited = st.data_editor(
                     rows,
-                    column_config={
-                        "Sıra": st.column_config.NumberColumn(min_value=1, max_value=len(pl), step=1),
-                        "_idx": None,
-                    },
-                    disabled=["Şarkı", "Sanatçı"],
-                    hide_index=True,
-                    use_container_width=True,
-                    key="pl_editor"
+                    column_config={"Sıra": st.column_config.NumberColumn(min_value=1, max_value=len(pl), step=1), "_idx": None},
+                    disabled=["Şarkı", "Sanatçı"], hide_index=True, use_container_width=True, key="pl_editor"
                 )
                 if st.button("✅ Sıralamayı ve İşaretleri Uygula", use_container_width=True, key="apply_pl_order"):
                     sorted_rows = sorted(edited, key=lambda r: r["Sıra"])
@@ -1816,11 +1989,9 @@ with t6:
         ra1, ra2 = st.columns(2)
         with ra1:
             rjml = st.selectbox("Model", list(MODELS.values()), label_visibility="collapsed", key="rj_msel")
-            rjmk = [k for k, v in MODELS.items() if v == rjml][0]
-            st.session_state._rj_model = rjmk
+            st.session_state._rj_model = [k for k, v in MODELS.items() if v == rjml][0]
             rjll = st.selectbox("Dil", list(LANGUAGES.values()), index=1, label_visibility="collapsed", key="rj_lsel")
-            rjlk = [k for k, v in LANGUAGES.items() if v == rjll][0]
-            st.session_state._rj_lang = rjlk
+            st.session_state._rj_lang = [k for k, v in LANGUAGES.items() if v == rjll][0]
             rj_st = st.text_input("Başlangıç Saati", value=st.session_state._rj_start, placeholder="HH:MM", label_visibility="collapsed", key="rj_start_inp")
             if rj_st != st.session_state._rj_start:
                 st.session_state._rj_start = rj_st
@@ -1828,12 +1999,10 @@ with t6:
         with ra2:
             rjcn = st.radio("Cinsiyet", ["Tümü", "♀ Kadın", "♂ Erkek"], horizontal=True, label_visibility="collapsed", key="rj_cn")
             rjvf = {k: v for k, v in VOICES.items() if rjcn == "Tümü" or (rjcn == "♀ Kadın" and v[0] == "♀") or (rjcn == "♂ Erkek" and v[0] == "♂")}
-            rjvc = st.selectbox("Ses", list(rjvf.keys()), format_func=lambda x: f"{VOICES[x][0]} {x}", label_visibility="collapsed", key="rj_vsel")
-            st.session_state._rj_voice = rjvc
+            st.session_state._rj_voice = st.selectbox("Ses", list(rjvf.keys()), format_func=lambda x: f"{VOICES[x][0]} {x}", label_visibility="collapsed", key="rj_vsel")
         st.markdown("<span class='sl'>▶ Reji Stil Talimatı</span>", unsafe_allow_html=True)
         rjps = st.selectbox("Stil Preset", list(STYLE_PRESETS.keys()), label_visibility="collapsed", key="rj_ps")
-        rjsty = st.text_area("Stil", value=STYLE_PRESETS[rjps], height=72, label_visibility="collapsed", key=f"rj_sty_{rjps}")
-        st.session_state._rj_style = rjsty
+        st.session_state._rj_style = st.text_area("Stil", value=STYLE_PRESETS[rjps], height=72, label_visibility="collapsed", key=f"rj_sty_{rjps}")
         st.markdown(f"<div class='card t'>🎙️ <b>{st.session_state._rj_voice}</b> · 🤖 <b>{st.session_state._rj_model.replace('gemini-','').replace('-tts','')}</b> · 🌐 <b>{st.session_state._rj_lang}</b> · 🕐 <b>{st.session_state._rj_start}</b></div>", unsafe_allow_html=True)
         if st.button("🔄 Tüm Anons Metinlerini Otomatik Yenile", use_container_width=True, key="regen_all"):
             for i, s in enumerate(st.session_state._playlist):
@@ -1986,7 +2155,7 @@ with t6:
 with t7:
     st.markdown("<div class='rjhdr' style='border-color:#1a1a3e;'><h2 style='background:linear-gradient(90deg,#fff 30%,#a78bfa);-webkit-background-clip:text;-webkit-text-fill-color:transparent;'>🎛️ Fon+Anons Mikseri</h2><p style='color:#6b7a8d;'>Anons TTS + Fon müziği · Duck efekti · Fade-in/out · Arşivden miksleme · ZIP</p></div>", unsafe_allow_html=True)
     if not PYDUB_OK:
-        st.markdown("<div class='card r'>⚠️ <b>PyDub kurulu değil.</b> <code>requirements.txt</code> içinde <code>pydub</code> (ve Python 3.13+ için <code>audioop-lts</code>), <code>packages.txt</code> içinde <code>ffmpeg</code> olmalıdır.</div>", unsafe_allow_html=True)
+        st.markdown("<div class='card r'>⚠️ <b>PyDub kurulu değil.</b></div>", unsafe_allow_html=True)
     else:
         fon_mx = list_audio(DIRS["fon"])
         if not fon_mx:
@@ -2140,89 +2309,478 @@ with t7:
                         st.audio(ma["wav"], format="audio/wav")
                         st.download_button("💾 WAV İndir", ma["wav"], ma["fn"], "audio/wav", key="dl_arc3")
 
-# ════════════════ T8 — YAYIN OTOMASYONU ══════════════════════════
+# ════════════════ T8 — GELİŞMİŞ YAYIN OTOMASYONU ═══════════════
 with t8:
-    st.markdown("<div class='rjhdr' style='border-color:#0d2e0a;'><h2 style='background:linear-gradient(90deg,#fff 30%,#22c55e);-webkit-background-clip:text;-webkit-text-fill-color:transparent;'>🚀 Yayın Otomasyonu</h2><p style='color:#528068;'>Şarkı + Anons + Fon → Tam yayın akışı · Zincir · Ses Birleştir · WAV</p></div>", unsafe_allow_html=True)
+    st.markdown(
+        "<div class='rjhdr' style='border-color:#0d2e0a;'>"
+        "<h2 style='background:linear-gradient(90deg,#fff 30%,#22c55e);-webkit-background-clip:text;-webkit-text-fill-color:transparent;'>"
+        "🚀 Akıllı Yayın Otomasyonu — Tam MP3 Yayın Stüdyosu</h2>"
+        "<p style='color:#6b7a8d;'>Şarkı Yükle & Seç · Her Şarkıya Özel Anons (Başı / İçi Talk-Over / Sonu), Fon & Jingle · Müzik Kısma (Ducking) · MP3 Çıktısı</p>"
+        "</div>",
+        unsafe_allow_html=True,
+    )
     if not PYDUB_OK:
-        st.markdown("<div class='card r'>⚠️ <b>PyDub kurulu değil.</b></div>", unsafe_allow_html=True)
+        st.markdown("<div class='card r'>⚠️ <b>PyDub kurulu değil.</b> <code>requirements.txt</code> içinde <code>pydub</code> ve <code>packages.txt</code> içinde <code>ffmpeg</code> bulunmalıdır.</div>", unsafe_allow_html=True)
     else:
-        yo1, yo2, yo3 = st.tabs(["📋 Yayın Planla", "🔗 Zincir Yayın", "✂️ Ses Birleştir"])
+        yo1, yo2, yo3 = st.tabs(["🎛️ Playlist & Tam Yayın (MP3)", "🔗 Reji Zincir Yayın", "✂️ Hızlı Ses Birleştir"])
 
+        # ──── YO1: ANA BASİT VE GÜÇLÜ YAYIN OTOMASYONU ────
         with yo1:
-            pl_songs_yo = list_audio(DIRS["playlist"])
-            if not pl_songs_yo:
-                st.markdown("<div class='card a'>📁 Kütüphanede şarkı yok. Kütüphane sekmesinden ekleyin.</div>", unsafe_allow_html=True)
+            # 1) ŞARKI EKLEME ALANI
+            st.markdown("<span class='sl'>1️⃣ Adım: Yayına Şarkı Ekle</span>", unsafe_allow_html=True)
+            add_c1, add_c2 = st.columns([1.2, 1], gap="medium")
+
+            with add_c1:
+                yo_song_ups = st.file_uploader(
+                    "📤 Bilgisayardan Şarkı Yükle (MP3/WAV/OGG/FLAC — Otomatik Playlist'e Eklenir)",
+                    type=["mp3", "wav", "ogg", "flac", "m4a"],
+                    accept_multiple_files=True,
+                    key="yo_direct_ups",
+                )
+                if yo_song_ups:
+                    added_yo = 0
+                    for uf in yo_song_ups:
+                        uid_y = f"yo_up_{uf.name}_{uf.size}"
+                        if uid_y in st.session_state._processed_uploads:
+                            continue
+                        dp, _ = save_upload(uf, DIRS["playlist"], uf.name, convert_to_wav=False)
+                        if dp:
+                            st.session_state._processed_uploads.add(uid_y)
+                            st.session_state._yo_tracks.append(make_yo_track(dp))
+                            added_yo += 1
+                    if added_yo > 0:
+                        st.success(f"✅ {added_yo} şarkı yüklendi ve yayın listesine eklendi!")
+                        st.rerun()
+
+            with add_c2:
+                lib_songs = list_audio(DIRS["playlist"])
+                pick_lib = st.multiselect(
+                    "📚 Veya Kütüphanedeki Şarkılardan Seç",
+                    lib_songs,
+                    key="yo_pick_lib",
+                    placeholder="Kütüphaneden şarkı seçin…",
+                )
+                b_add_lib, b_add_rj = st.columns(2)
+                with b_add_lib:
+                    if st.button("➕ Seçilenleri Ekle", use_container_width=True, key="yo_btn_add_lib"):
+                        if pick_lib:
+                            for fn_l in pick_lib:
+                                fp_l = os.path.join(DIRS["playlist"], fn_l)
+                                st.session_state._yo_tracks.append(make_yo_track(fp_l))
+                            st.rerun()
+                with b_add_rj:
+                    if st.button("📻 Delay Reji'den Aktar", use_container_width=True, key="yo_btn_from_rj"):
+                        imported = 0
+                        for rs in st.session_state._playlist:
+                            lf = rs.get("local_file")
+                            if not lf or not os.path.exists(lf):
+                                pf = next((f for f in lib_songs if rs.get("title", "").lower() in f.lower()), None)
+                                lf = os.path.join(DIRS["playlist"], pf) if pf else None
+                            if lf and os.path.exists(lf):
+                                trk = make_yo_track(lf, rs.get("title", ""), rs.get("artist", ""))
+                                if rs.get("anons_wav_bas"):
+                                    trk["anons_src"] = "Dosyadan"
+                                    trk["anons_bytes"] = rs["anons_wav_bas"]
+                                    trk["anons_name"] = "Reji Baş Anons"
+                                    trk["anons_pos"] = ANONS_POSITIONS[0]
+                                if rs.get("anons_wav_son"):
+                                    trk["end_anons_enabled"] = True
+                                    trk["end_anons_bytes"] = rs["anons_wav_son"]
+                                st.session_state._yo_tracks.append(trk)
+                                imported += 1
+                        if imported:
+                            st.success(f"✅ {imported} şarkı aktarıldı!")
+                            st.rerun()
+                        else:
+                            st.warning("Reji'de yerel dosyayla eşleşen şarkı bulunamadı.")
+
+            st.markdown("<hr>", unsafe_allow_html=True)
+
+            # Mevcut listeler
+            tracks = st.session_state._yo_tracks
+            arc_list = [e for e in st.session_state._archive if e.get("wav")]
+            arc_map = {f"{e['ts_s']} · {e['voice']} · {e['prev'][:26]}": e for e in arc_list}
+            fon_list = list_audio(DIRS["fon"])
+            jingle_list = list_audio(DIRS["jingles"])
+            anons_lib_list = list_audio(DIRS["anons"])
+
+            if not tracks:
+                st.markdown("<div class='card a'>🎵 Yayın listeniz şu an boş. Yukarıdan şarkı yükleyin veya kütüphaneden ekleyin.</div>", unsafe_allow_html=True)
             else:
-                yc1, yc2 = st.columns([1.2, 1])
-                with yc1:
-                    yo_sel = st.multiselect("Şarkı Sıralaması", pl_songs_yo, default=pl_songs_yo[:min(3, len(pl_songs_yo))], key="yo_sel")
-                    yo_cf = st.slider("Crossfade ms", 0, 3000, 1200, key="yo_cf")
-                    yo_gap = st.slider("Boşluk ms", 0, 5000, 1500, key="yo_gap")
-                    fon_yo = list_audio(DIRS["fon"])
-                    yo_fon = st.selectbox("Fon", ["Yok"] + fon_yo, key="yo_fon")
-                    yo_fvol = st.slider("Fon Ses", -24, 0, -8, key="yo_fvol") if yo_fon != "Yok" else -8
-                    yo_duck = st.slider("Duck", -30, -6, -16, key="yo_duck") if yo_fon != "Yok" else -16
-                    yo_name = st.text_input("Yayın Adı", value=f"Yayin_{datetime.datetime.now().strftime('%H%M')}", key="yo_name")
-                with yc2:
-                    st.markdown("<span class='sl'>▶ Anons Ekle</span>", unsafe_allow_html=True)
-                    arc_yo = [e for e in st.session_state._archive if e.get("wav")]
-                    st.markdown(f"<div style='font-size:.67rem;color:#6b7a8d;'>Arşivde {len(arc_yo)} ses · Sırayla şarkı başına atanır</div>", unsafe_allow_html=True)
-                    yo_arc = st.checkbox("Arşiv seslerini şarkı başına ekle", key="yo_arc")
-                    yo_up = st.file_uploader("Veya Anons WAV Yükle", type=["wav", "mp3"], accept_multiple_files=True, key="yo_up")
-                    up_anons = []
-                    if yo_up:
-                        for uf in yo_up:
-                            _, wv = save_upload(uf, DIRS["anons"], uf.name)
-                            if wv:
-                                up_anons.append(wv)
-                        if up_anons:
-                            st.success(f"✅ {len(up_anons)} anons hazır")
-                if yo_sel and st.button("🚀 YAYIN OLUŞTUR", type="primary", use_container_width=True, key="yo_btn"):
-                    with st.status("🎙️ Yayın oluşturuluyor…", expanded=True) as yo_st:
-                        master = AudioSegment.silent(500)
-                        fon_yo_seg = AudioSegment.from_file(os.path.join(DIRS["fon"], yo_fon)) if yo_fon != "Yok" else None
-                        for idx_y, fn_y in enumerate(yo_sel):
-                            sp_y = os.path.join(DIRS["playlist"], fn_y)
-                            if not os.path.exists(sp_y):
-                                st.write(f"⚠️ {fn_y} bulunamadı")
-                                continue
-                            st.write(f"🎵 [{idx_y+1}/{len(yo_sel)}] {fn_y}")
-                            try:
-                                sseg = AudioSegment.from_file(sp_y)
-                            except Exception as e:
-                                st.write(f"❌ {e}")
-                                continue
-                            an_wav = None
-                            if yo_arc and idx_y < len(arc_yo):
-                                an_wav = arc_yo[idx_y]["wav"]
-                            elif idx_y < len(up_anons):
-                                an_wav = up_anons[idx_y]
-                            if an_wav:
-                                aseg = AudioSegment.from_file(io.BytesIO(an_wav))
-                                if fon_yo_seg:
-                                    blk = safe_append(mix_fon_voice(fon_yo_seg, aseg, yo_fvol, yo_duck), sseg, yo_cf)
+                # 2) GLOBAL SES KISMA & OTOMATİK YAYIN AYARLARI
+                st.markdown("<span class='sl'>2️⃣ Adım: Varsayılan Ses / Kısma & Yayın Kuralları</span>", unsafe_allow_html=True)
+                with st.expander("⚙️ Global Yayın, Müzik Kısma (Ducking) & Otomatik Jingle Ayarları", expanded=True):
+                    g1, g2, g3, g4 = st.columns(4)
+                    with g1:
+                        g_duck = st.slider("📉 Müzik Kısılma (dB)", -30, -3, -16, 1, key="yo_g_duck", help="Anons okunurken şarkının sesi ne kadar kısılacak?")
+                        g_ramp = st.slider("🎚️ Kısılma Yumuşaklığı (ms)", 150, 1500, 450, 50, key="yo_g_ramp")
+                    with g2:
+                        g_anons_gain = st.slider("🎙️ Anons Ses Kazancı (dB)", -6.0, 9.0, 1.5, 0.5, key="yo_g_again")
+                        g_fon_vol = st.slider("🎶 Fon Müzik Seviyesi (dB)", -24, 0, -8, 1, key="yo_g_fvol")
+                    with g3:
+                        g_cf = st.slider("🔀 Şarkılar Arası Crossfade (ms)", 0, 4000, 1500, 100, key="yo_g_cf")
+                        g_gap = st.slider("⏸️ Şarkı Arası Boşluk (ms)", 0, 3000, 0, 100, key="yo_g_gap")
+                    with g4:
+                        g_comp = st.checkbox("📻 Radyo Broadcast Kompresör", value=True, key="yo_g_comp", help="Tüm şarkı ve anonsları radyo yayın standardında dengeler.")
+                        g_norm = st.checkbox("📏 Master Normalizasyon (-14 dBFS)", value=True, key="yo_g_norm")
+                        g_start_time = st.text_input("🕐 Yayın Başlangıç Saati", value="08:00", key="yo_g_stime")
+
+                    # Otomatik Jingle Serpiştirme & Açılış/Kapanış Jingle
+                    aj1, aj2, aj3 = st.columns(3)
+                    with aj1:
+                        open_jingle = st.selectbox("🎺 Yayın Açılış Jingle", ["Yok"] + jingle_list, key="yo_open_j")
+                    with aj2:
+                        close_jingle = st.selectbox("🎺 Yayın Kapanış Jingle", ["Yok"] + jingle_list, key="yo_close_j")
+                    with aj3:
+                        auto_j_every = st.selectbox("🔄 Her X Şarkıda Otomatik Jingle", [0, 2, 3, 4, 5], format_func=lambda x: "Kapalı" if x == 0 else f"Her {x} şarkıda bir", key="yo_auto_j_n")
+                        auto_j_file = st.selectbox("Otomatik Ara Jingle", jingle_list if jingle_list else ["Yok"], key="yo_auto_j_f") if auto_j_every > 0 else "Yok"
+
+                    if st.button("⚡ Bu Müzik Kısma / Anons Ses Değerlerini Tüm Şarkılara Uygula", use_container_width=True, key="yo_apply_global"):
+                        for ti in range(len(st.session_state._yo_tracks)):
+                            st.session_state._yo_tracks[ti]["duck_db"] = float(g_duck)
+                            st.session_state._yo_tracks[ti]["anons_gain_db"] = float(g_anons_gain)
+                            st.session_state._yo_tracks[ti]["ramp_ms"] = int(g_ramp)
+                            st.session_state._yo_tracks[ti]["fon_vol_db"] = float(g_fon_vol)
+                        st.success("✅ Tüm şarkıların ses ve kısma değerleri güncellendi!")
+                        st.rerun()
+
+                # 3) HER ŞARKI İÇİN AYRI ANONS / FON / JİNGLE AYARLARI
+                st.markdown(f"<span class='sl'>3️⃣ Adım: Şarkı Bazlı Anons, Fon, Jingle & Konum Ayarları ({len(tracks)} Şarkı)</span>", unsafe_allow_html=True)
+
+                for ti, trk in enumerate(tracks):
+                    tid = trk["id"]
+                    # Özet etiketleri oluştur
+                    has_a = bool(trk.get("anons_bytes") or trk.get("anons_file") or trk.get("anons_arc_id"))
+                    has_f = bool(trk.get("fon_bytes") or trk.get("fon_file"))
+                    has_j = bool(trk.get("jingle_bytes") or trk.get("jingle_file"))
+                    pos_short = trk.get("anons_pos", "").split("(")[0].strip()
+                    badges = []
+                    if has_a:
+                        badges.append(f"🎙️ {pos_short}")
+                    if trk.get("end_anons_enabled"):
+                        badges.append("🎙️ +Ek Son")
+                    if has_f:
+                        badges.append("🎶 Fon")
+                    if has_j:
+                        badges.append(f"🎺 {trk.get('jingle_pos', 'Jingle')}")
+                    badges.append(f"📉 {trk.get('duck_db', -16):.0f}dB")
+                    badge_str = " · ".join(badges) if badges else "Sade Şarkı"
+
+                    with st.expander(f"🎵 {ti+1:02d}. {trk['artist']} — {trk['title']} [{fmt_dur(trk['dur'])}]  |  {badge_str}", expanded=(ti == 0 and not has_a)):
+                        # Sıralama & Silme butonları
+                        ord1, ord2, ord3, ord4 = st.columns([1, 1, 1, 3])
+                        with ord1:
+                            if ti > 0 and st.button("⬆️ Yukarı", key=f"yo_up_{tid}", use_container_width=True):
+                                tracks[ti-1], tracks[ti] = tracks[ti], tracks[ti-1]
+                                st.rerun()
+                        with ord2:
+                            if ti < len(tracks) - 1 and st.button("⬇️ Aşağı", key=f"yo_dn_{tid}", use_container_width=True):
+                                tracks[ti+1], tracks[ti] = tracks[ti], tracks[ti+1]
+                                st.rerun()
+                        with ord3:
+                            if st.button("🗑️ Kaldır", key=f"yo_del_{tid}", use_container_width=True):
+                                tracks.pop(ti)
+                                st.rerun()
+
+                        tc1, tc2 = st.columns([1.15, 1], gap="medium")
+
+                        # SOL KOLON: ANONS KAYNAĞI & KONUMU
+                        with tc1:
+                            st.markdown("<span class='sl2'>▸ Ana Anons Seçimi & Konumu</span>", unsafe_allow_html=True)
+                            src_opts = ["Yok", "📂 Arşivden Seç", "📚 Kütüphaneden Seç", "📤 Dosyadan Yükle"]
+                            cur_src = trk.get("anons_src", "Yok")
+                            if cur_src not in src_opts:
+                                cur_src = "Dosyadan" if trk.get("anons_bytes") else "Yok"
+                            a_src = st.radio(
+                                "Anons Kaynağı",
+                                src_opts,
+                                index=src_opts.index(cur_src) if cur_src in src_opts else 0,
+                                horizontal=True,
+                                label_visibility="collapsed",
+                                key=f"yo_asrc_{tid}",
+                            )
+                            trk["anons_src"] = a_src
+
+                            if a_src == "Yok":
+                                trk["anons_arc_id"] = None
+                                trk["anons_file"] = None
+                                trk["anons_bytes"] = None
+                            elif a_src == "📂 Arşivden Seç":
+                                trk["anons_file"] = None
+                                trk["anons_bytes"] = None
+                                if not arc_list:
+                                    st.info("Arşivde üretilmiş ses yok.")
                                 else:
-                                    blk = aseg + sseg
-                            else:
-                                blk = sseg
-                            master = safe_append(master, blk, yo_cf)
-                            if yo_gap > 0:
-                                master += AudioSegment.silent(yo_gap)
-                            st.write(f"✅ [{idx_y+1}] Tamamlandı")
-                        master = norm_seg(master)
-                        out_yo = seg_to_wav(master)
-                        out_path = os.path.join(DIRS["output"], f"{sfn(yo_name)}.wav")
+                                    arc_keys = list(arc_map.keys())
+                                    cur_ak = next((k for k, v in arc_map.items() if v["id"] == trk.get("anons_arc_id")), arc_keys[0])
+                                    sel_ak = st.selectbox("Arşiv Ses", arc_keys, index=arc_keys.index(cur_ak), key=f"yo_aarc_{tid}")
+                                    trk["anons_arc_id"] = arc_map[sel_ak]["id"]
+                                    trk["anons_name"] = sel_ak
+                            elif a_src == "📚 Kütüphaneden Seç":
+                                trk["anons_arc_id"] = None
+                                trk["anons_bytes"] = None
+                                if not anons_lib_list:
+                                    st.info("Kütüphanede (anons klasöründe) dosya yok.")
+                                else:
+                                    cur_af = trk.get("anons_file") if trk.get("anons_file") in anons_lib_list else anons_lib_list[0]
+                                    sel_af = st.selectbox("Kütüphane Anons", anons_lib_list, index=anons_lib_list.index(cur_af), key=f"yo_alib_{tid}")
+                                    trk["anons_file"] = sel_af
+                                    trk["anons_name"] = sel_af
+                            elif a_src == "📤 Dosyadan Yükle":
+                                trk["anons_arc_id"] = None
+                                trk["anons_file"] = None
+                                up_a = st.file_uploader("Anons Ses Dosyası (WAV/MP3)", type=["wav", "mp3", "ogg"], key=f"yo_aup_{tid}")
+                                if up_a:
+                                    trk["anons_bytes"] = up_a.getvalue()
+                                    trk["anons_name"] = up_a.name
+                                if trk.get("anons_bytes"):
+                                    st.caption(f"✅ Yüklü: {trk.get('anons_name', 'Anons')} ({dur_bytes(trk['anons_bytes']):.1f}s)")
+
+                            if a_src != "Yok":
+                                cur_pos = trk.get("anons_pos", ANONS_POSITIONS[1])
+                                sel_pos = st.selectbox(
+                                    "📍 Anons Nerede Çalsın?",
+                                    ANONS_POSITIONS,
+                                    index=ANONS_POSITIONS.index(cur_pos) if cur_pos in ANONS_POSITIONS else 1,
+                                    key=f"yo_apos_{tid}",
+                                )
+                                trk["anons_pos"] = sel_pos
+
+                                if "Başlangıçtan" in sel_pos:
+                                    max_sec = max(10, int(trk["dur"]) - 2)
+                                    trk["anons_offset_sec"] = st.slider(
+                                        "⏱️ Başlangıçtan Kaç Saniye Sonra Başlasın? (0 = Hemen girişte)",
+                                        0.0, float(min(60, max_sec)), float(min(trk.get("anons_offset_sec", 6.0), max_sec)), 0.5,
+                                        key=f"yo_aoff_{tid}",
+                                    )
+                                elif "Bitişten" in sel_pos:
+                                    max_sec = max(10, int(trk["dur"]) - 2)
+                                    trk["anons_offset_sec"] = st.slider(
+                                        "⏱️ Şarkı Bitişinden Kaç Saniye Önce Başlasın?",
+                                        3.0, float(min(60, max_sec)), float(min(max(3.0, trk.get("anons_offset_sec", 12.0)), max_sec)), 0.5,
+                                        key=f"yo_aoff_end_{tid}",
+                                    )
+
+                            # Opsiyonel Ek Bitiş Anonsu
+                            end_en = st.checkbox("➕ Ayrıca Şarkı Sonuna da Ek Anons Ekle", value=bool(trk.get("end_anons_enabled", False)), key=f"yo_enda_en_{tid}")
+                            trk["end_anons_enabled"] = end_en
+                            if end_en:
+                                e_src = st.radio("Son Anons Kaynağı", ["📂 Arşiv", "📤 Dosya"], horizontal=True, key=f"yo_endsrc_{tid}")
+                                if e_src == "📂 Arşiv" and arc_list:
+                                    arc_keys2 = list(arc_map.keys())
+                                    cur_ak2 = next((k for k, v in arc_map.items() if v["id"] == trk.get("end_anons_arc_id")), arc_keys2[0])
+                                    sel_ak2 = st.selectbox("Son Anons (Arşiv)", arc_keys2, index=arc_keys2.index(cur_ak2), key=f"yo_endarc_{tid}")
+                                    trk["end_anons_arc_id"] = arc_map[sel_ak2]["id"]
+                                    trk["end_anons_bytes"] = None
+                                elif e_src == "📤 Dosya":
+                                    up_ea = st.file_uploader("Son Anons Dosyası", type=["wav", "mp3", "ogg"], key=f"yo_endup_{tid}")
+                                    if up_ea:
+                                        trk["end_anons_bytes"] = up_ea.getvalue()
+                                        trk["end_anons_arc_id"] = None
+
+                        # SAĞ KOLON: FON, JİNGLE, SES KISMA (DUCKING) & ÖNİZLEME
+                        with tc2:
+                            st.markdown("<span class='sl3'>▸ Fon Müziği (Şarkı Başı/Sonu Anons Altına)</span>", unsafe_allow_html=True)
+                            f_opts = ["Yok", "📚 Fon Kütüphanesi", "📤 Dosyadan Yükle"]
+                            cur_fs = trk.get("fon_src", "Yok")
+                            f_src = st.radio("Fon", f_opts, index=f_opts.index(cur_fs) if cur_fs in f_opts else 0, horizontal=True, label_visibility="collapsed", key=f"yo_fsrc_{tid}")
+                            trk["fon_src"] = f_src
+                            if f_src == "Yok":
+                                trk["fon_file"] = None
+                                trk["fon_bytes"] = None
+                            elif f_src == "📚 Fon Kütüphanesi":
+                                trk["fon_bytes"] = None
+                                if fon_list:
+                                    cur_ff = trk.get("fon_file") if trk.get("fon_file") in fon_list else fon_list[0]
+                                    trk["fon_file"] = st.selectbox("Fon Dosyası", fon_list, index=fon_list.index(cur_ff), key=f"yo_flib_{tid}")
+                                else:
+                                    st.info("Fon kütüphanesi boş.")
+                            elif f_src == "📤 Dosyadan Yükle":
+                                trk["fon_file"] = None
+                                up_f = st.file_uploader("Fon Müziği", type=["mp3", "wav", "ogg"], key=f"yo_fup_{tid}")
+                                if up_f:
+                                    trk["fon_bytes"] = up_f.getvalue()
+
+                            st.markdown("<span class='sl3'>▸ Jingle / Sweeper</span>", unsafe_allow_html=True)
+                            j_opts = ["Yok", "📚 Jingle Kütüphanesi", "📤 Dosyadan Yükle"]
+                            cur_js = trk.get("jingle_src", "Yok")
+                            j_src = st.radio("Jingle", j_opts, index=j_opts.index(cur_js) if cur_js in j_opts else 0, horizontal=True, label_visibility="collapsed", key=f"yo_jsrc_{tid}")
+                            trk["jingle_src"] = j_src
+                            if j_src == "Yok":
+                                trk["jingle_file"] = None
+                                trk["jingle_bytes"] = None
+                            elif j_src == "📚 Jingle Kütüphanesi":
+                                trk["jingle_bytes"] = None
+                                if jingle_list:
+                                    cur_jf = trk.get("jingle_file") if trk.get("jingle_file") in jingle_list else jingle_list[0]
+                                    trk["jingle_file"] = st.selectbox("Jingle Dosyası", jingle_list, index=jingle_list.index(cur_jf), key=f"yo_jlib_{tid}")
+                                else:
+                                    st.info("Jingle kütüphanesi boş.")
+                            elif j_src == "📤 Dosyadan Yükle":
+                                trk["jingle_file"] = None
+                                up_j = st.file_uploader("Jingle Dosyası", type=["mp3", "wav", "ogg"], key=f"yo_jup_{tid}")
+                                if up_j:
+                                    trk["jingle_bytes"] = up_j.getvalue()
+                            if j_src != "Yok":
+                                trk["jingle_pos"] = st.selectbox("Jingle Konumu", JINGLE_POSITIONS, index=JINGLE_POSITIONS.index(trk.get("jingle_pos", "Şarkı Başı")), key=f"yo_jpos_{tid}")
+
+                            st.markdown("<span class='sl3'>▸ Müzik Kısma (Ducking) & Ses Dengesi</span>", unsafe_allow_html=True)
+                            sd1, sd2 = st.columns(2)
+                            with sd1:
+                                trk["duck_db"] = st.slider("📉 Müzik Kısılma (dB)", -30.0, -3.0, float(trk.get("duck_db", -16.0)), 1.0, key=f"yo_duck_{tid}")
+                                trk["ramp_ms"] = st.slider("🎚️ Geçiş (ms)", 150, 1500, int(trk.get("ramp_ms", 450)), 50, key=f"yo_ramp_{tid}")
+                            with sd2:
+                                trk["anons_gain_db"] = st.slider("🎙️ Anons Kazancı (dB)", -6.0, 9.0, float(trk.get("anons_gain_db", 1.5)), 0.5, key=f"yo_again_{tid}")
+                                if f_src != "Yok":
+                                    trk["fon_vol_db"] = st.slider("🎶 Fon Sesi (dB)", -24.0, 0.0, float(trk.get("fon_vol_db", -8.0)), 1.0, key=f"yo_fvol_{tid}")
+
+                            if st.button("🎧 Bu Şarkıyı Anons/Kısma ile Önizle", use_container_width=True, key=f"yo_prev_{tid}"):
+                                with st.spinner("🎧 Önizleme hazırlanıyor…"):
+                                    prev_seg, prev_notes = build_track_audio(trk, g_cf)
+                                    if prev_seg is not None:
+                                        st.session_state[f"_yo_prev_{tid}"] = seg_to_wav(prev_seg)
+                            if st.session_state.get(f"_yo_prev_{tid}"):
+                                st.audio(st.session_state[f"_yo_prev_{tid}"], format="audio/wav")
+
+                # 4) YAYIN AKIŞI ÖZET TABLOSU (CUE SHEET)
+                st.markdown("<hr><span class='sl'>4️⃣ Adım: Yayın Akışı Özeti (Cue Sheet) & Tam MP3 Çıktısı</span>", unsafe_allow_html=True)
+                cue_lines = []
+                cur_sec_t = 0
+                for ci, trk in enumerate(tracks):
+                    st_hhmm = add_time(g_start_time, cur_sec_t)
+                    has_a = bool(trk.get("anons_bytes") or trk.get("anons_file") or trk.get("anons_arc_id"))
+                    has_j = bool(trk.get("jingle_bytes") or trk.get("jingle_file"))
+                    a_info = f"{trk['anons_pos'].split('(')[0].strip()}" if has_a else "Anons Yok"
+                    if trk.get("end_anons_enabled"):
+                        a_info += " + Ek Son"
+                    j_info = f"🎺 {trk.get('jingle_pos','')}" if has_j else "—"
+                    st.markdown(
+                        f"<div class='tl-block'>"
+                        f"<span class='tl-time'>{st_hhmm}</span>"
+                        f"<span class='tl-type ttype-song'>#{ci+1:02d}</span>"
+                        f"<span class='tl-lbl'><b>{trk['artist']} — {trk['title']}</b> · {a_info} · {j_info} · 📉 {trk['duck_db']:.0f}dB</span>"
+                        f"<span class='tl-dur'>{fmt_dur(trk['dur'])}</span>"
+                        f"</div>",
+                        unsafe_allow_html=True,
+                    )
+                    cue_lines.append(f"{st_hhmm} | #{ci+1:02d} | {trk['artist']} - {trk['title']} ({fmt_dur(trk['dur'])}) | {a_info} | {j_info} | Duck: {trk['duck_db']:.0f}dB")
+                    cur_sec_t += int(trk["dur"])
+
+                st.markdown(f"<div class='card t'>📡 Tahmini Toplam Yayın Süresi: <b>{fmt_dur(cur_sec_t)}</b> ({g_start_time} → {add_time(g_start_time, cur_sec_t)})</div>", unsafe_allow_html=True)
+
+                # ÇIKTI AYARLARI
+                oc1, oc2, oc3, oc4 = st.columns([1.8, 1, 1, 1])
+                with oc1:
+                    yo_out_name = st.text_input("Yayın Dosya Adı", value=f"ImajFM_Yayin_{datetime.datetime.now().strftime('%d%m_%H%M')}", key="yo_out_name")
+                with oc2:
+                    yo_out_fmt = st.selectbox("Çıktı Formatı", ["mp3", "wav"], key="yo_out_fmt")
+                with oc3:
+                    yo_mp3_br = st.selectbox("MP3 Kalitesi", ["128k", "192k", "256k", "320k"], index=1, key="yo_mp3_br", disabled=(yo_out_fmt != "mp3"))
+                with oc4:
+                    if st.button("🗑️ Listeyi Temizle", use_container_width=True, key="yo_clr_all"):
+                        st.session_state._yo_tracks = []
+                        st.session_state._last_yo = None
+                        st.rerun()
+
+                if st.button(f"🚀 TAM YAYINI OLUŞTUR ({yo_out_fmt.upper()})", type="primary", use_container_width=True, key="yo_render_master"):
+                    with st.status("🎙️ Tam yayın kurgulanıyor ve miksleniyor…", expanded=True) as yo_st:
+                        master = AudioSegment.silent(300, frame_rate=44100).set_channels(2).set_sample_width(2)
+
+                        # Açılış Jingle
+                        if open_jingle != "Yok":
+                            oj_p = os.path.join(DIRS["jingles"], open_jingle)
+                            if os.path.exists(oj_p):
+                                st.write(f"🎺 Açılış Jingle: {open_jingle}")
+                                master = safe_append(master, norm_seg(unify_seg(AudioSegment.from_file(oj_p)), -14.0), 400)
+
+                        for idx_y, trk in enumerate(tracks):
+                            st.write(f"🎵 [{idx_y+1}/{len(tracks)}] İşleniyor: {trk['artist']} — {trk['title']}")
+                            t_seg, t_notes = build_track_audio(trk, g_cf)
+                            if t_seg is None:
+                                st.write(f"⚠️ Atlandı: {trk['title']}")
+                                continue
+                            if t_notes:
+                                st.write(f"   ↳ {' · '.join(t_notes)}")
+                            master = safe_append(master, t_seg, g_cf)
+
+                            # Otomatik Ara Jingle
+                            if auto_j_every > 0 and auto_j_file != "Yok" and (idx_y + 1) % auto_j_every == 0 and idx_y < len(tracks) - 1:
+                                aj_p = os.path.join(DIRS["jingles"], auto_j_file)
+                                if os.path.exists(aj_p):
+                                    st.write(f"🎺 Otomatik Ara Jingle: {auto_j_file}")
+                                    master = safe_append(master, norm_seg(unify_seg(AudioSegment.from_file(aj_p)), -14.0), min(500, g_cf))
+
+                            if g_gap > 0 and idx_y < len(tracks) - 1:
+                                master += AudioSegment.silent(g_gap, frame_rate=44100).set_channels(2).set_sample_width(2)
+
+                        # Kapanış Jingle
+                        if close_jingle != "Yok":
+                            cj_p = os.path.join(DIRS["jingles"], close_jingle)
+                            if os.path.exists(cj_p):
+                                st.write(f"🎺 Kapanış Jingle: {close_jingle}")
+                                master = safe_append(master, norm_seg(unify_seg(AudioSegment.from_file(cj_p)), -14.0), 400)
+
+                        # Broadcast Master Zinciri
+                        if g_comp and len(master) > 500:
+                            st.write("📻 Broadcast Kompresör uygulanıyor…")
+                            try:
+                                master = pydub_fx.compress_dynamic_range(master, threshold=-18.0, ratio=2.8, attack=5.0, release=80.0)
+                            except Exception:
+                                pass
+                        if g_norm:
+                            st.write("📏 Master Normalizasyon (-14 dBFS) uygulanıyor…")
+                            master = norm_seg(master, -14.0)
+
+                        st.write(f"💾 {yo_out_fmt.upper()} dosyası kodlanıyor…")
+                        out_bytes, real_ext = export_audio_bytes(master, yo_out_fmt, yo_mp3_br, yo_out_name)
+                        out_path = os.path.join(DIRS["output"], f"{sfn(yo_out_name)}.{real_ext}")
                         with open(out_path, "wb") as f_out:
-                            f_out.write(out_yo)
-                        yo_st.update(label="✅ Hazır!", state="complete")
-                        st.session_state._last_yo = {"wav": out_yo, "dur": len(master)/1000.0, "name": yo_name, "cnt": len(yo_sel)}
+                            f_out.write(out_bytes)
+
+                        cue_txt = f"İMAJ FM YAYIN AKIŞI ({yo_out_name})\n" + "=" * 60 + "\n" + "\n".join(cue_lines)
+                        yo_st.update(label=f"✅ Tam Yayın Hazır ({real_ext.upper()})!", state="complete")
+                        st.session_state._last_yo = {
+                            "data": out_bytes,
+                            "ext": real_ext,
+                            "dur": len(master) / 1000.0,
+                            "name": yo_out_name,
+                            "cnt": len(tracks),
+                            "size_mb": len(out_bytes) / (1024 * 1024),
+                        }
+                        st.session_state._last_yo_cue = cue_txt
                         st.balloons()
+
                 if st.session_state._last_yo:
                     lyo = st.session_state._last_yo
-                    st.markdown(f"<div class='card g'>✅ {lyo['name']} · {fmt_dur(lyo['dur'])} · {lyo['cnt']} şarkı</div>", unsafe_allow_html=True)
-                    st.audio(lyo["wav"], format="audio/wav")
-                    st.download_button(f"📦 {lyo['name']} İndir", lyo["wav"], file_name=f"{sfn(lyo['name'])}.wav", mime="audio/wav", use_container_width=True, key="dl_yo")
+                    mime_out = "audio/mpeg" if lyo["ext"] == "mp3" else "audio/wav"
+                    st.markdown(
+                        f"<div class='card g'>✅ <b>{lyo['name']}.{lyo['ext']}</b> · Süre: <b>{fmt_dur(lyo['dur'])}</b> · "
+                        f"{lyo['cnt']} şarkı · Boyut: <b>{lyo['size_mb']:.2f} MB</b></div>",
+                        unsafe_allow_html=True,
+                    )
+                    st.audio(lyo["data"], format=mime_out)
+                    dl_c1, dl_c2 = st.columns([2, 1])
+                    with dl_c1:
+                        st.download_button(
+                            f"📦 Tam Yayını İndir (.{lyo['ext'].upper()})",
+                            lyo["data"],
+                            file_name=f"{sfn(lyo['name'])}.{lyo['ext']}",
+                            mime=mime_out,
+                            use_container_width=True,
+                            key="dl_yo",
+                        )
+                    with dl_c2:
+                        if st.session_state._last_yo_cue:
+                            st.download_button(
+                                "📄 Cue Sheet (.TXT)",
+                                st.session_state._last_yo_cue,
+                                file_name=f"{sfn(lyo['name'])}_cuesheet.txt",
+                                mime="text/plain",
+                                use_container_width=True,
+                                key="dl_yo_cue",
+                            )
 
+        # ──── YO2: DELAY REJİ ZİNCİR YAYIN ────
         with yo2:
             st.markdown("<div class='card b'>Delay Reji anonsları + Kütüphane şarkıları → Zincir yayın</div>", unsafe_allow_html=True)
             pl_songs_ch = list_audio(DIRS["playlist"])
@@ -2235,12 +2793,13 @@ with t8:
             else:
                 ch_fon = st.selectbox("Fon", fon_ch_list, key="ch_fon")
                 ch_cf = st.slider("Crossfade", 0, 2000, 1000, key="ch_cf")
+                ch_fmt = st.selectbox("Format", ["mp3", "wav"], key="ch_fmt")
                 ch_name = st.text_input("Yayın Adı", value=f"Zincir_{datetime.datetime.now().strftime('%H%M')}", key="ch_name")
                 anr = [s for s in rj_pl if s.get("anons_wav_bas") or s.get("anons_wav_son")]
                 st.markdown(f"<div class='card t'>{len(anr)}/{len(rj_pl)} şarkı için anons hazır</div>", unsafe_allow_html=True)
                 if st.button("🔗 ZİNCİR YAYIN", type="primary", use_container_width=True, key="ch_btn"):
                     with st.status("🔗 Zincir yayın birleştiriliyor…", expanded=True) as ch_st:
-                        mch = AudioSegment.silent(500)
+                        mch = AudioSegment.silent(500, frame_rate=44100).set_channels(2).set_sample_width(2)
                         fch = AudioSegment.from_file(os.path.join(DIRS["fon"], ch_fon))
                         for i, song in enumerate(rj_pl):
                             st.write(f"🎵 [{i+1}/{len(rj_pl)}] {song.get('title','?')}")
@@ -2256,7 +2815,7 @@ with t8:
                                 blk = safe_append(blk, mix_fon_voice(fch, ag_b), ch_cf)
                             if sp and os.path.exists(sp):
                                 try:
-                                    sg = AudioSegment.from_file(sp)
+                                    sg = norm_seg(unify_seg(AudioSegment.from_file(sp)), -14.0)
                                     blk = safe_append(blk, sg, ch_cf)
                                 except Exception as e:
                                     st.write(f"❌ {e}")
@@ -2266,22 +2825,24 @@ with t8:
                             if len(blk) > 0:
                                 mch = safe_append(mch, blk, ch_cf)
                                 st.write(f"✅ [{i+1}] eklendi")
-                        mch = norm_seg(mch)
-                        chw = seg_to_wav(mch)
-                        out_ch_path = os.path.join(DIRS["output"], f"{sfn(ch_name)}.wav")
+                        mch = norm_seg(mch, -14.0)
+                        ch_bytes, ch_ext = export_audio_bytes(mch, ch_fmt, "192k", ch_name)
+                        out_ch_path = os.path.join(DIRS["output"], f"{sfn(ch_name)}.{ch_ext}")
                         with open(out_ch_path, "wb") as f_ch:
-                            f_ch.write(chw)
+                            f_ch.write(ch_bytes)
                         ch_st.update(label="✅ Hazır!", state="complete")
-                        st.session_state._last_ch = {"wav": chw, "dur": len(mch)/1000.0, "name": ch_name}
+                        st.session_state._last_ch = {"data": ch_bytes, "ext": ch_ext, "dur": len(mch)/1000.0, "name": ch_name}
                         st.balloons()
                 if st.session_state._last_ch:
                     lch = st.session_state._last_ch
-                    st.markdown(f"<div class='card g'>✅ {lch['name']} · {fmt_dur(lch['dur'])}</div>", unsafe_allow_html=True)
-                    st.audio(lch["wav"], format="audio/wav")
-                    st.download_button(f"📦 {lch['name']} İndir", lch["wav"], f"{sfn(lch['name'])}.wav", "audio/wav", use_container_width=True, key="dl_ch")
+                    mime_c = "audio/mpeg" if lch["ext"] == "mp3" else "audio/wav"
+                    st.markdown(f"<div class='card g'>✅ {lch['name']}.{lch['ext']} · {fmt_dur(lch['dur'])}</div>", unsafe_allow_html=True)
+                    st.audio(lch["data"], format=mime_c)
+                    st.download_button(f"📦 {lch['name']} İndir (.{lch['ext'].upper()})", lch["data"], f"{sfn(lch['name'])}.{lch['ext']}", mime_c, use_container_width=True, key="dl_ch")
 
+        # ──── YO3: HIZLI SES BİRLEŞTİR ────
         with yo3:
-            st.markdown("<div class='card b'>Birden fazla sesi sıralı birleştir → tek WAV</div>", unsafe_allow_html=True)
+            st.markdown("<div class='card b'>Birden fazla sesi sıralı birleştir → tek MP3 / WAV</div>", unsafe_allow_html=True)
             cnt1, cnt2 = st.tabs(["📂 Arşivden", "📤 Dosya Yükle"])
             with cnt1:
                 arc_cnt = [e for e in st.session_state._archive if e.get("wav")]
@@ -2314,6 +2875,7 @@ with t8:
                 if cnt_ups:
                     gu = st.slider("Boşluk", 0, 3000, 500, key="gu")
                     cu = st.slider("Crossfade", 0, 2000, 200, key="cu")
+                    c_fmt = st.selectbox("Çıktı", ["mp3", "wav"], key="cnt_fmt")
                     if st.button("🔗 Birleştir", use_container_width=True, key="cnt_up_btn"):
                         su = []
                         for uf in cnt_ups:
@@ -2322,18 +2884,19 @@ with t8:
                             except Exception as e:
                                 st.warning(f"{uf.name}: {e}")
                         if su:
-                            ru = su[0]
+                            ru = unify_seg(su[0])
                             for s in su[1:]:
                                 if gu > 0:
-                                    ru += AudioSegment.silent(gu)
+                                    ru += AudioSegment.silent(gu, frame_rate=44100).set_channels(2).set_sample_width(2)
                                 ru = safe_append(ru, s, cu)
-                            uw = seg_to_wav(norm_seg(ru))
-                            st.session_state._last_cnt_up = {"wav": uw, "n": len(su), "dur": len(ru)/1000.0}
+                            udata, uext = export_audio_bytes(norm_seg(ru), c_fmt, "192k", "Birlesik_Yayin")
+                            st.session_state._last_cnt_up = {"data": udata, "ext": uext, "n": len(su), "dur": len(ru)/1000.0}
                     if st.session_state._last_cnt_up:
                         lcu = st.session_state._last_cnt_up
+                        mime_u = "audio/mpeg" if lcu["ext"] == "mp3" else "audio/wav"
                         st.success(f"✅ {lcu['n']} dosya · {fmt_dur(lcu['dur'])}")
-                        st.audio(lcu["wav"], format="audio/wav")
-                        st.download_button("📦 WAV İndir", lcu["wav"], "upload_birlesik.wav", "audio/wav", key="dl_cnt_up")
+                        st.audio(lcu["data"], format=mime_u)
+                        st.download_button(f"📦 {lcu['ext'].upper()} İndir", lcu["data"], f"upload_birlesik.{lcu['ext']}", mime_u, key="dl_cnt_up")
 
 # ════════════════ T9 — SES EFEKTLERİ & SİNYAL ÜRETİCİ ════════════
 with t9:
@@ -2402,7 +2965,7 @@ with t9:
                 if preset_name.strip():
                     params = {"low": low, "high": high, "gain": gain, "noise": noise}
                     if save_effect_preset(preset_name, params):
-                        st.success(f"✅ '{preset_name}' kaydedildi! Artık Efekt Uygula sekmesinde seçilebilir.")
+                        st.success(f"✅ '{preset_name}' kaydedildi!")
                 else:
                     st.warning("⚠️ Preset adı girin.")
 
@@ -2450,11 +3013,11 @@ with t9:
                 with sc_a:
                     st.download_button("💾 Sinyali İndir", lsig["wav"], lsig["name"], "audio/wav", use_container_width=True, key="dl_sig")
                 with sc_b:
-                    if st.button("📥 Efekt Kütüphanesine Kaydet", use_container_width=True, key="save_sig_lib"):
-                        dest_s = os.path.join(DIRS["effects"], lsig["name"])
+                    if st.button("📥 Jingle Kütüphanesine Kaydet", use_container_width=True, key="save_sig_lib"):
+                        dest_s = os.path.join(DIRS["jingles"], lsig["name"])
                         with open(dest_s, "wb") as fs_out:
                             fs_out.write(lsig["wav"])
-                        st.success(f"✅ {lsig['name']} Efektler klasörüne kaydedildi!")
+                        st.success(f"✅ {lsig['name']} Jingle klasörüne kaydedildi!")
 
 # ════════════════ T10 — KÜTÜPHANE ════════════════════════════════
 with t10:
@@ -2603,272 +3166,3 @@ with t12:
         pod_desc = st.text_area("Açıklama", value="İmaj FM radyo yayınlarından podcast bölümleri.", key="pod_desc")
 
         opts_pod = [f"{i+1}. {e['ts_s']} | {e['voice']} | {e['prev'][:30]}" for i, e in enumerate(arc_pod)]
-        selected_ep = st.multiselect("Bölüm Seç", opts_pod, key="pod_sel")
-
-        if st.button("📄 RSS Feed Oluştur", type="primary", use_container_width=True, key="pod_btn"):
-            if selected_ep:
-                episodes, zip_items = [], []
-                for sel in selected_ep:
-                    e = arc_pod[opts_pod.index(sel)]
-                    fn_ep = f"episode_{e['id']}.wav"
-                    episodes.append({
-                        "title": f"{e['voice']} - {e['ts_s']}",
-                        "description": e["text"][:200],
-                        "url": fn_ep,
-                        "length": str(len(e["wav"])),
-                        "pub_date": datetime.datetime.now(datetime.timezone.utc).strftime("%a, %d %b %Y %H:%M:%S +0000"),
-                        "guid": e["id"]
-                    })
-                    zip_items.append((fn_ep, e["wav"]))
-                rss_path = os.path.join(DIRS["podcast"], f"podcast_{int(time.time())}.xml")
-                rss_xml = generate_podcast_rss(pod_title, pod_desc, pod_author, pod_base, episodes, rss_path)
-                if rss_xml:
-                    st.session_state._last_rss = {"xml": rss_xml, "zip": make_zip(zip_items)}
-            else:
-                st.warning("⚠️ En az 1 bölüm seçin.")
-
-        if st.session_state._last_rss:
-            lrss = st.session_state._last_rss
-            st.success("✅ RSS feed ve bölüm paketi oluşturuldu!")
-            rc1, rc2 = st.columns(2)
-            with rc1:
-                st.download_button("📥 RSS XML İndir", lrss["xml"], "podcast.xml", "application/xml", use_container_width=True, key="dl_rss")
-            with rc2:
-                st.download_button("📦 Bölümleri ZIP İndir", lrss["zip"], "podcast_episodes.zip", "application/zip", use_container_width=True, key="dl_pod_zip")
-
-# ════════════════ T13 — YAYIN TAKVİMİ ══════════════════════════
-with t13:
-    st.markdown("<div class='rjhdr' style='border-color:#2e1a0a;'><h2 style='background:linear-gradient(90deg,#fff 30%,#f59e0b);-webkit-background-clip:text;-webkit-text-fill-color:transparent;'>📅 Yayın Takvimi</h2><p style='color:#6b7a8d;'>Gelecek yayınları planla · Durum güncelle · Delay Reji'ye aktar</p></div>", unsafe_allow_html=True)
-    sc1, sc2 = st.tabs(["📋 Yeni Plan", "📂 Planlanan Yayınlar"])
-
-    with sc1:
-        sch_name = st.text_input("Yayın Adı", placeholder="Örn: Sabah Kuşağı", key="sch_name")
-        sd_c1, sd_c2 = st.columns(2)
-        with sd_c1:
-            sch_date = st.date_input("Tarih", key="sch_date")
-        with sd_c2:
-            sch_time = st.time_input("Saat", key="sch_time")
-        sch_songs = st.multiselect("Kütüphane Şarkıları", list_audio(DIRS["playlist"]), key="sch_songs")
-        sch_notes = st.text_area("Notlar", placeholder="Özel notlar…", key="sch_notes")
-
-        if st.button("📋 Yayın Planla", type="primary", use_container_width=True, key="sch_btn"):
-            if sch_name.strip() and sch_songs:
-                if schedule_broadcast(sch_name.strip(), str(sch_date), sch_time.strftime("%H:%M"), sch_songs, sch_notes):
-                    st.success("✅ Yayın planlandı!")
-                    st.rerun()
-            else:
-                st.warning("⚠️ Yayın adı ve en az 1 şarkı gerekli.")
-
-    with sc2:
-        schedules = get_scheduled_broadcasts()
-        if not schedules:
-            st.markdown("<div class='card a'>Planlanmış yayın yok.</div>", unsafe_allow_html=True)
-        else:
-            for idx_s, s in enumerate(schedules[:30]):
-                st_badge = "✅ Tamamlandı" if s.get("status") == "completed" else "⏳ Bekliyor"
-                with st.expander(f"📅 {s.get('name')} — {s.get('date')} {s.get('time')} [{st_badge}]"):
-                    st.markdown(f"<div class='card b'>🎵 {len(s.get('songs', []))} şarkı · Not: {s.get('notes') or 'Yok'}</div>", unsafe_allow_html=True)
-                    st.write("Şarkılar:", ", ".join(s.get("songs", [])))
-                    b_s1, b_s2, b_s3 = st.columns(3)
-                    with b_s1:
-                        if st.button("📻 Reji Playlist'e Aktar", key=f"sch_load_{idx_s}", use_container_width=True):
-                            loaded_pl = []
-                            for fn_s in s.get("songs", []):
-                                fp_s = os.path.join(DIRS["playlist"], fn_s)
-                                d_s = dur_file(fp_s)
-                                mn_s, sc_s = divmod(int(d_s or 210), 60)
-                                meta_s = read_id3_meta(fp_s) if os.path.exists(fp_s) else {"title": fn_s, "artist": "Takvim"}
-                                loaded_pl.append({
-                                    "id": song_uid(), "title": meta_s["title"], "artist": meta_s["artist"],
-                                    "duration_min": mn_s, "duration_sec": sc_s,
-                                    "anons_bas": True, "anons_son": False,
-                                    "anons_bas_text": "", "anons_son_text": "",
-                                    "fon_aktif": False, "fon_tip": "📻 Radyo Klasik",
-                                    "anons_wav_bas": None, "anons_wav_son": None,
-                                    "local_file": fp_s if os.path.exists(fp_s) else None
-                                })
-                            st.session_state._playlist = loaded_pl
-                            st.session_state._rj_start = s.get("time", "06:00")[:5]
-                            st.session_state._rj_plan_ok = False
-                            st.success("✅ Delay Reji sekmesine aktarıldı!")
-                    with b_s2:
-                        next_st = "completed" if s.get("status") != "completed" else "pending"
-                        if st.button("🔄 Durum Değiştir", key=f"sch_tog_{idx_s}", use_container_width=True):
-                            fp_sch = os.path.join(DIRS["schedules"], s["_file"])
-                            s_copy = {k: v for k, v in s.items() if k != "_file"}
-                            s_copy["status"] = next_st
-                            with open(fp_sch, "w", encoding="utf-8") as fw_s:
-                                json.dump(s_copy, fw_s, ensure_ascii=False, indent=2)
-                            st.rerun()
-                    with b_s3:
-                        if st.button("🗑️ Sil", key=f"sch_del_{idx_s}", use_container_width=True):
-                            fp_sch = os.path.join(DIRS["schedules"], s["_file"])
-                            if os.path.exists(fp_sch):
-                                os.remove(fp_sch)
-                            st.rerun()
-
-# ════════════════ T14 — SES KLONLAMA (RVC HAZIRLIK) ═════════════
-with t14:
-    st.markdown("<div class='rjhdr' style='border-color:#2a1a3e;'><h2 style='background:linear-gradient(90deg,#fff 30%,#a78bfa);-webkit-background-clip:text;-webkit-text-fill-color:transparent;'>🗣️ Ses Klonlama (RVC Hazırlık)</h2><p style='color:#6b7a8d;'>RVC eğitimi için 44.1kHz Mono segment veri seti hazırla · Normalize et · ZIP indir</p></div>", unsafe_allow_html=True)
-    if not PYDUB_OK:
-        st.markdown("<div class='card r'>⚠️ PyDub kurulu değil.</div>", unsafe_allow_html=True)
-    else:
-        rvc1, rvc2 = st.tabs(["📤 Ses Yükle & Veri Seti Hazırla", "📂 Mevcut Ses Klonları"])
-
-        with rvc1:
-            st.markdown("<span class='sl'>▶ Kaynak Ses Dosyaları Yükle</span>", unsafe_allow_html=True)
-            rvc_ups = st.file_uploader("Ses dosyaları (MP3/WAV/OGG)", type=["mp3", "wav", "ogg", "flac"], accept_multiple_files=True, key="rvc_ups")
-            rc_a, rc_b = st.columns(2)
-            with rc_a:
-                clone_name = st.text_input("Ses / Model Adı", placeholder="Örn: Kenan_Ses", key="clone_name")
-            with rc_b:
-                rvc_chunk = st.slider("Segment Uzunluğu (sn)", 5, 30, 15, key="rvc_chunk")
-
-            if rvc_ups and clone_name.strip() and st.button("📤 Kaydet ve RVC Veri Seti Hazırla", type="primary", use_container_width=True, key="rvc_save"):
-                clone_dir = os.path.join(DIRS["voice_clones"], sfn(clone_name))
-                os.makedirs(clone_dir, exist_ok=True)
-                saved_paths = []
-                for uf in rvc_ups:
-                    dp, _ = save_upload(uf, clone_dir, uf.name)
-                    if dp:
-                        saved_paths.append(dp)
-                if saved_paths:
-                    rvc_dir = os.path.join(DIRS["rvc_workspace"], sfn(clone_name))
-                    seg_cnt = prepare_rvc_dataset(saved_paths, rvc_dir, chunk_sec=rvc_chunk)
-                    if seg_cnt > 0:
-                        zip_items = []
-                        for f in sorted(os.listdir(rvc_dir)):
-                            fp = os.path.join(rvc_dir, f)
-                            if os.path.isfile(fp):
-                                with open(fp, "rb") as fh:
-                                    zip_items.append((f, fh.read()))
-                        st.session_state._last_rvc_zip = {
-                            "zip": make_zip(zip_items),
-                            "name": sfn(clone_name),
-                            "cnt": seg_cnt,
-                            "dir": rvc_dir
-                        }
-            if st.session_state._last_rvc_zip:
-                lrvc = st.session_state._last_rvc_zip
-                st.markdown(f"<div class='card g'>✅ Veri seti hazır: <b>{lrvc['cnt']}</b> adet 44.1kHz Mono WAV segmenti<br>📁 {lrvc['dir']}</div>", unsafe_allow_html=True)
-                st.download_button("📦 RVC Veri Seti ZIP İndir", lrvc["zip"], f"{lrvc['name']}_rvc_dataset.zip", "application/zip", use_container_width=True, key="dl_rvc_zip")
-
-        with rvc2:
-            st.markdown("<span class='sl'>▶ Mevcut Ses Klonları</span>", unsafe_allow_html=True)
-            clones = [d for d in os.listdir(DIRS["voice_clones"]) if os.path.isdir(os.path.join(DIRS["voice_clones"], d))]
-            if not clones:
-                st.markdown("<div class='card a'>Henüz kayıtlı ses klonu yok.</div>", unsafe_allow_html=True)
-            else:
-                for c in clones:
-                    c_dir = os.path.join(DIRS["voice_clones"], c)
-                    r_dir = os.path.join(DIRS["rvc_workspace"], c)
-                    c_files = list_audio(c_dir)
-                    r_files = list_audio(r_dir) if os.path.isdir(r_dir) else []
-                    with st.expander(f"🗣️ {c} ({len(c_files)} ham dosya · {len(r_files)} RVC segment)"):
-                        for f in c_files[:5]:
-                            st.audio(os.path.join(c_dir, f))
-                        if len(c_files) > 5:
-                            st.caption(f"+ {len(c_files) - 5} dosya daha")
-                        if st.button("🗑️ Klonu Sil", key=f"del_clone_{c}"):
-                            import shutil
-                            shutil.rmtree(c_dir, ignore_errors=True)
-                            shutil.rmtree(r_dir, ignore_errors=True)
-                            st.rerun()
-
-# ════════════════ T15 — DÖNÜŞTÜRÜCÜ & NORMALİZASYON ══════════════
-with t15:
-    st.markdown("<div class='rjhdr' style='border-color:#0f2e3a;'><h2 style='background:linear-gradient(90deg,#fff 30%,#38bdf8);-webkit-background-clip:text;-webkit-text-fill-color:transparent;'>🔄 Toplu Ses Dönüştürücü & Normalizasyon</h2><p style='color:#6b7a8d;'>Format dönüştürme (MP3/WAV/OGG/FLAC) · Ses Normalizasyon (dBFS) · Sessizlik Kırpma · ZIP</p></div>", unsafe_allow_html=True)
-    if not PYDUB_OK:
-        st.markdown("<div class='card r'>⚠️ PyDub ve FFmpeg kurulu olmalıdır.</div>", unsafe_allow_html=True)
-    else:
-        dn1, dn2 = st.tabs(["🔄 Toplu Format Dönüştürücü", "📏 Ses Normalizasyon & Temizleme"])
-
-        with dn1:
-            conv_ups = st.file_uploader("Dönüştürülecek Ses Dosyaları", type=["mp3", "wav", "ogg", "flac", "m4a", "aac"], accept_multiple_files=True, key="conv_ups")
-            cv1, cv2, cv3, cv4 = st.columns(4)
-            with cv1:
-                tgt_fmt = st.selectbox("Hedef Format", ["mp3", "wav", "ogg", "flac"], key="tgt_fmt")
-            with cv2:
-                tgt_br = st.selectbox("Bitrate (MP3/OGG)", ["128k", "192k", "256k", "320k"], index=1, key="tgt_br")
-            with cv3:
-                tgt_sr = st.selectbox("Örnekleme Hızı (Hz)", [22050, 24000, 44100, 48000], index=2, key="tgt_sr")
-            with cv4:
-                tgt_ch = st.selectbox("Kanal", ["Orijinal", "Mono (1)", "Stereo (2)"], key="tgt_ch")
-
-            if conv_ups and st.button("🔄 Toplu Dönüştür", type="primary", use_container_width=True, key="conv_btn"):
-                res_conv = []
-                prg_c = st.progress(0)
-                for idx_c, uf in enumerate(conv_ups):
-                    try:
-                        seg = AudioSegment.from_file(io.BytesIO(uf.getvalue()))
-                        seg = seg.set_frame_rate(int(tgt_sr))
-                        if tgt_ch == "Mono (1)":
-                            seg = seg.set_channels(1)
-                        elif tgt_ch == "Stereo (2)":
-                            seg = seg.set_channels(2)
-                        out_buf = io.BytesIO()
-                        exp_kw = {"format": tgt_fmt}
-                        if tgt_fmt in ("mp3", "ogg"):
-                            exp_kw["bitrate"] = tgt_br
-                        seg.export(out_buf, **exp_kw)
-                        base_n = os.path.splitext(uf.name)[0]
-                        res_conv.append((f"{sfn(base_n)}.{tgt_fmt}", out_buf.getvalue()))
-                    except Exception as e:
-                        st.warning(f"{uf.name} dönüştürülemedi: {e}")
-                    prg_c.progress((idx_c + 1) / len(conv_ups))
-                if res_conv:
-                    st.session_state._last_conv_zip = {"zip": make_zip(res_conv), "cnt": len(res_conv), "fmt": tgt_fmt}
-
-            if st.session_state._last_conv_zip:
-                lcz = st.session_state._last_conv_zip
-                st.success(f"✅ {lcz['cnt']} dosya .{lcz['fmt']} formatına dönüştürüldü!")
-                st.download_button("📦 Dönüştürülenleri ZIP İndir", lcz["zip"], f"donusturulen_{lcz['fmt']}.zip", "application/zip", use_container_width=True, key="dl_conv_zip")
-
-        with dn2:
-            norm_ups = st.file_uploader("Normalize Edilecek Dosyalar", type=["mp3", "wav", "ogg", "flac"], accept_multiple_files=True, key="norm_ups")
-            nm1, nm2, nm3 = st.columns(3)
-            with nm1:
-                tgt_dbfs = st.slider("Hedef Ses Seviyesi (dBFS)", -24.0, -3.0, -14.0, 0.5, key="tgt_dbfs")
-            with nm2:
-                do_trim = st.checkbox("Baş/Son Sessizlikleri Kırp", value=True, key="do_trim")
-            with nm3:
-                trim_thresh = st.slider("Sessizlik Eşiği (dBFS)", -60, -25, -45, key="trim_thresh")
-
-            if norm_ups and st.button("📏 Normalize Et & Temizle", type="primary", use_container_width=True, key="norm_btn"):
-                res_norm = []
-                prg_n = st.progress(0)
-                for idx_n, uf in enumerate(norm_ups):
-                    try:
-                        seg = AudioSegment.from_file(io.BytesIO(uf.getvalue()))
-                        if do_trim and len(seg) > 200:
-                            lead = detect_leading_silence(seg, silence_threshold=trim_thresh, chunk_size=10)
-                            trail = detect_leading_silence(seg.reverse(), silence_threshold=trim_thresh, chunk_size=10)
-                            if lead + trail < len(seg) - 100:
-                                seg = seg[lead:len(seg) - trail]
-                        seg = pydub_fx.normalize(seg)
-                        seg = norm_seg(seg, tgt_dbfs)
-                        base_n = os.path.splitext(uf.name)[0]
-                        res_norm.append((f"{sfn(base_n)}_norm.wav", seg_to_wav(seg)))
-                    except Exception as e:
-                        st.warning(f"{uf.name} işlenemedi: {e}")
-                    prg_n.progress((idx_n + 1) / len(norm_ups))
-                if res_norm:
-                    st.session_state._last_norm_zip = {"zip": make_zip(res_norm), "cnt": len(res_norm)}
-
-            if st.session_state._last_norm_zip:
-                lnz = st.session_state._last_norm_zip
-                st.success(f"✅ {lnz['cnt']} dosya {tgt_dbfs} dBFS seviyesine normalize edildi!")
-                st.download_button("📦 Normalize Dosyaları ZIP İndir", lnz["zip"], "normalize_sesler.zip", "application/zip", use_container_width=True, key="dl_norm_zip")
-
-# ════════════════ FOOTER ═════════════════════════════════════════
-st.markdown("<hr>", unsafe_allow_html=True)
-gms = "✅ Gemini" if GEMINI_OK else "❌ Gemini"
-pds = "✅ PyDub" if PYDUB_OK else "❌ PyDub"
-nps = "✅ NumPy/Matplotlib" if NP_OK else "❌ NumPy"
-mts = "✅ Mutagen" if MUTAGEN_OK else "❌ Mutagen"
-tk_f, tr_f = pool_stats()
-st.markdown(
-    f"<div style='text-align:center;color:#4b5c74;font-size:.65rem;letter-spacing:.08em;padding:4px 0 10px;'>"
-    f"İMAJ FM TTS STÜDYO v7.1 · {gms} · {pds} · {nps} · {mts} · API: {tk_f}/10 yüklü · {tr_f} kalan · 2026</div>",
-    unsafe_allow_html=True,
-)
