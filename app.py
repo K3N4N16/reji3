@@ -1,6 +1,6 @@
 """
 ╔══════════════════════════════════════════════════════════════════════════════╗
-║  İMAJ FM · TTS STÜDYO  v7.3 — TAM ENTEGRE YAYIN SİSTEMİ                   ║
+║  İMAJ FM · TTS STÜDYO  v7.4 — TAM ENTEGRE YAYIN SİSTEMİ                   ║
 ║  Yüksek Kontrast Koyu & Aydınlık Tema · Gemini Flash 2.5 / 3.1 / 3.8 TTS    ║
 ║  AI Anons Yazarı · Anında TTS · Gelişmiş Yayın Otomasyonu (MP3/ID3/Cue)     ║
 ║  Delay Reji · Fon+Anons · Ses Efektleri & Sinyal · Podcast RSS · Takvim     ║
@@ -73,7 +73,7 @@ for d in DIRS.values():
 
 # ─── PAGE CONFIG ──────────────────────────────────────────────────────────────
 st.set_page_config(
-    page_title="İmaj FM TTS v7.3",
+    page_title="İmaj FM TTS v7.4",
     page_icon="🎙️",
     layout="wide",
     initial_sidebar_state="expanded",
@@ -106,14 +106,10 @@ if "_theme_name" not in st.session_state:
 
 def apply_theme_css(t: Dict[str, str]):
     is_light = t["bg"].startswith("#f")
-    card_g = "#ecfdf5" if is_light else "#052e16"
-    card_g_txt = "#065f46" if is_light else "#86efac"
-    card_a = "#fffbeb" if is_light else "#291802"
-    card_a_txt = "#92400e" if is_light else "#fde68a"
-    card_r = "#fef2f2" if is_light else "#2d0606"
-    card_r_txt = "#991b1b" if is_light else "#fca5a5"
-    card_p = "#f5f3ff" if is_light else "#1b1035"
-    card_p_txt = "#5b21b6" if is_light else "#ddd6fe"
+    card_g, card_g_txt = ("#ecfdf5", "#065f46") if is_light else ("#052e16", "#86efac")
+    card_a, card_a_txt = ("#fffbeb", "#92400e") if is_light else ("#291802", "#fde68a")
+    card_r, card_r_txt = ("#fef2f2", "#991b1b") if is_light else ("#2d0606", "#fca5a5")
+    card_p, card_p_txt = ("#f5f3ff", "#5b21b6") if is_light else ("#1b1035", "#ddd6fe")
     hdr_title = "linear-gradient(90deg,#0f172a 25%,#dc2626)" if is_light else "linear-gradient(90deg,#ffffff 25%,#ff6b6b)"
 
     st.markdown(f"""
@@ -225,8 +221,8 @@ VOICES = {
 }
 
 MODELS = {
-    "gemini-3.8-flash-tts": "✨ 3.8 Flash TTS (Oto-Fallback Aktif)",
     "gemini-3.1-flash-tts-preview": "🔥 3.1 Flash TTS Preview (En Güncel)",
+    "gemini-3.8-flash-tts": "✨ 3.8 Flash TTS (Oto-Fallback Aktif)",
     "gemini-2.5-flash-tts": "🚀 2.5 Flash TTS (Stabil)",
     "gemini-2.5-pro-tts": "💎 2.5 Pro TTS (Yüksek Kalite)",
     "gemini-2.5-flash-preview-tts": "⚡ 2.5 Flash Preview TTS",
@@ -311,6 +307,7 @@ _si("_active_idx", 0)
 _si("_secrets_loaded", False)
 _si("_api_stats", {"calls": 0, "chars": 0, "secs": 0.0})
 _si("_giris", False)
+_si("_pending_t_tek", None)
 _si("_t_tek", DEFAULT_TEK)
 _si("ta1", DEFAULT_TEK)
 _si("_t_cift", DEFAULT_CIFT)
@@ -323,7 +320,7 @@ _si("ab_b_ta", "[seriously] İmaj FM'e hoş geldiniz.")
 _si("_playlist", [])
 _si("_yo_tracks", [])
 _si("_rj_voice", "Kore")
-_si("_rj_model", "gemini-2.5-flash-tts")
+_si("_rj_model", "gemini-3.1-flash-tts-preview")
 _si("_rj_lang", "tr-TR")
 _si("_rj_style", "")
 _si("_rj_start", "06:00")
@@ -339,6 +336,12 @@ for _ok_key in [
     "_last_rvc_zip", "_last_conv_zip", "_last_norm_zip"
 ]:
     _si(_ok_key, None)
+
+# Bekleyen favori metin transferini widget'tan önce uygula
+if st.session_state._pending_t_tek is not None:
+    st.session_state._t_tek = st.session_state._pending_t_tek
+    st.session_state.ta1 = st.session_state._pending_t_tek
+    st.session_state._pending_t_tek = None
 
 # ═══════════════════════════ API HAVUZU ═════════════════════════
 def load_secrets():
@@ -529,7 +532,7 @@ def _run_tts_with_rotation(model: str, fn_call, chars: int):
                 data, mime = fn_call(ak, mdl)
                 consume(ai, chars)
                 if mdl != model:
-                    st.toast(f"ℹ️ '{model}' henüz API'de aktif olmadığı için otomatik olarak '{mdl}' kullanıldı.", icon="🔄")
+                    st.toast(f"ℹ️ '{model}' henüz aktif olmadığı için otomatik olarak '{mdl}' kullanıldı.", icon="🔄")
                 return data, mime, ai
             except Exception as e:
                 err_s = str(e).upper()
@@ -538,7 +541,7 @@ def _run_tts_with_rotation(model: str, fn_call, chars: int):
                     mark_key_exhausted(ai)
                     continue
                 if any(x in err_s for x in ["404", "NOT_FOUND", "IS NOT FOUND", "NOT SUPPORTED"]):
-                    break  # Sonraki fallback modeline geç
+                    break
                 raise e
     raise RuntimeError(last_err or "Kullanılabilir API anahtarı veya aktif model kalmadı!")
 
@@ -1173,11 +1176,28 @@ def res_card(wav: bytes, voice: str, ai: int, dk: str, dn: str):
     st.download_button("💾 WAV İndir", wav, file_name=dn, mime="audio/wav", use_container_width=True, key=dk)
 
 def model_selector(key_prefix: str) -> str:
-    opts = list(MODELS.values()) + ["✍️ Özel Model ID Gir"]
-    sel = st.selectbox("Model", opts, label_visibility="collapsed", key=f"{key_prefix}_msel")
-    if sel == "✍️ Özel Model ID Gir":
+    mkeys = list(MODELS.keys()) + ["__custom__"]
+    sel = st.selectbox(
+        "Model",
+        mkeys,
+        format_func=lambda k: MODELS[k] if k in MODELS else "✍️ Özel Model ID Gir",
+        label_visibility="collapsed",
+        key=f"{key_prefix}_msel",
+    )
+    if sel == "__custom__":
         return st.text_input("Özel Model ID", value="gemini-3.8-flash-tts", key=f"{key_prefix}_mcustom").strip() or "gemini-2.5-flash-tts"
-    return [k for k, v in MODELS.items() if v == sel][0]
+    return sel
+
+def lang_selector(key_prefix: str) -> str:
+    lkeys = list(LANGUAGES.keys())
+    return st.selectbox(
+        "Dil",
+        lkeys,
+        index=1,
+        format_func=lambda k: LANGUAGES[k],
+        label_visibility="collapsed",
+        key=f"{key_prefix}_lsel",
+    )
 
 # ═══════════════════════════ GİRİŞ ══════════════════════════════
 def login_page():
@@ -1185,7 +1205,7 @@ def login_page():
     with col:
         st.markdown(f"""<div style='margin-top:60px;padding:32px 28px;background:{CURRENT_THEME['card']};border:1px solid {CURRENT_THEME['border']};border-radius:16px;'>
 <h2 style='text-align:center;font-family:Syne,sans-serif;font-weight:800;font-size:1.5rem;margin:0 0 4px;color:{CURRENT_THEME['text']};'>🎙️ İmaj FM Stüdyo</h2>
-<p style='text-align:center;color:{CURRENT_THEME['muted']};font-size:.75rem;letter-spacing:.12em;margin:0 0 18px;'>TTS & OTOMASYON v7.3 · GÜVENLİ GİRİŞ</p></div>""", unsafe_allow_html=True)
+<p style='text-align:center;color:{CURRENT_THEME['muted']};font-size:.75rem;letter-spacing:.12em;margin:0 0 18px;'>TTS & OTOMASYON v7.4 · GÜVENLİ GİRİŞ</p></div>""", unsafe_allow_html=True)
         u = st.text_input("Kullanıcı Adı", "", placeholder="👤 kullanıcı adı", label_visibility="collapsed")
         p = st.text_input("Şifre", "", type="password", placeholder="🔑 şifre", label_visibility="collapsed")
         try:
@@ -1205,9 +1225,8 @@ if not st.session_state._giris:
 
 # ═══════════════════════════ SIDEBAR ════════════════════════════
 with st.sidebar:
-    st.markdown(f"<div style='text-align:center;padding:4px 0 6px;font-family:Syne,sans-serif;font-size:1rem;font-weight:800;color:{CURRENT_THEME['text']};'>🎙️ İmaj FM <span style='color:{CURRENT_THEME['accent']};font-size:.72rem;'>v7.3</span></div>", unsafe_allow_html=True)
+    st.markdown(f"<div style='text-align:center;padding:4px 0 6px;font-family:Syne,sans-serif;font-size:1rem;font-weight:800;color:{CURRENT_THEME['text']};'>🎙️ İmaj FM <span style='color:{CURRENT_THEME['accent']};font-size:.72rem;'>v7.4</span></div>", unsafe_allow_html=True)
 
-    # TEMA SEÇİCİ
     sel_theme = st.selectbox("🎨 Tema", list(THEMES.keys()), index=list(THEMES.keys()).index(st.session_state["_theme_name"]), key="_theme_picker")
     if sel_theme != st.session_state["_theme_name"]:
         st.session_state["_theme_name"] = sel_theme
@@ -1280,7 +1299,6 @@ Aktif: <b>{lbl_a}</b> · Kalan: <b>{rem_a}/{MAX_PER_KEY}</b> · Toplam: <b>{tr_s
 stat_g = st.session_state._api_stats
 tk_m, tr_m = pool_stats()
 ak_chk, ai_m = get_key()
-rem_m = MAX_PER_KEY - st.session_state._api_pool[ai_m]["used"] if ai_m >= 0 else 0
 
 st.markdown("""<div class='hdr'><h1>🎙️ İmaj FM · Seslendirme & Yayın Otomasyon Stüdyosu</h1>
 <p><span class='ldot'></span>Gemini Flash TTS (2.5 / 3.1 / 3.8) · AI Anons Yazarı · Şarkı İçi/Başı/Sonu Talk-Over · MP3 Yayın Çıktısı · Yüksek Kontrast</p></div>""", unsafe_allow_html=True)
@@ -1335,8 +1353,7 @@ with t1:
 
         st.markdown("<span class='sl'>▶ Model & Dil</span>", unsafe_allow_html=True)
         mdl1 = model_selector("t1")
-        l1l = st.selectbox("L1", list(LANGUAGES.values()), label_visibility="collapsed", index=1, key="l1")
-        lng1 = [k for k, v in LANGUAGES.items() if v == l1l][0]
+        lng1 = lang_selector("t1")
 
         st.markdown("<span class='sl'>▶ Ses & EQ</span>", unsafe_allow_html=True)
         cn1 = st.radio("CN1", ["Tümü", "♀ Kadın", "♂ Erkek"], horizontal=True, label_visibility="collapsed", key="cn1")
@@ -1400,8 +1417,7 @@ with t2:
             st.session_state._t_cift = st.session_state.ta2 = TEMPLATES[tmpl2]
             st.rerun()
         mdl2 = model_selector("t2")
-        l2l = st.selectbox("L2", list(LANGUAGES.values()), label_visibility="collapsed", index=1, key="l2")
-        lng2 = [k for k, v in LANGUAGES.items() if v == l2l][0]
+        lng2 = lang_selector("t2")
         st.markdown("<span class='sl'>▶ Konuşmacı 1 & 2</span>", unsafe_allow_html=True)
         ca, cb = st.columns([1, 2])
         with ca: sp1n = st.text_input("S1N", "Sunucu", label_visibility="collapsed", key="sp1n")
@@ -1440,8 +1456,7 @@ with t3:
         cL3, cR3 = st.columns([1, 1.2], gap="large")
         with cL3:
             mdl3 = model_selector("t3")
-            l3l = st.selectbox("L3", list(LANGUAGES.values()), label_visibility="collapsed", index=1, key="l3")
-            lng3 = [k for k, v in LANGUAGES.items() if v == l3l][0]
+            lng3 = lang_selector("t3")
             vc3 = st.selectbox("V3", list(VOICES.keys()), format_func=lambda x: f"{VOICES[x][0]} {x}", label_visibility="collapsed", key="v3")
             eq3 = st.selectbox("EQ3", EQ_OPTS, label_visibility="collapsed", key="eq3")
             sty3 = st.text_area("STY3", "", height=50, label_visibility="collapsed", placeholder="Stil (opsiyonel)", key="sty3")
@@ -1507,11 +1522,12 @@ with t3:
 with t4:
     st.markdown("<div class='card p'>🔬 Aynı metni iki farklı ses/model/stil ile karşılaştır</div>", unsafe_allow_html=True)
     ab_c1, ab_c2 = st.columns(2, gap="large")
+
     def ab_col(col, label, prefix, txt_key, ta_key, store_key, btn_key, dl_key, arc_mode):
         with col:
             st.markdown(f"<span class='sl'>{label}</span>", unsafe_allow_html=True)
             mdl = model_selector(prefix)
-            lng = [k for k, v in LANGUAGES.items() if v == st.selectbox("L", list(LANGUAGES.values()), index=1, label_visibility="collapsed", key=f"{prefix}_l")][0]
+            lng = lang_selector(prefix)
             vc = st.selectbox("V", list(VOICES.keys()), format_func=lambda x: f"{VOICES[x][0]} {x}", label_visibility="collapsed", key=f"{prefix}_v")
             eq = st.selectbox("EQ", EQ_OPTS, label_visibility="collapsed", key=f"{prefix}_eq")
             ps = st.selectbox("PS", list(STYLE_PRESETS.keys()), label_visibility="collapsed", key=f"{prefix}_ps")
@@ -1536,6 +1552,7 @@ with t4:
                 st.audio(d["wav"], format="audio/wav")
                 draw_wf(d["wav"])
                 st.download_button(f"💾 {label}", d["wav"], f"{prefix}_{d['vc'].lower()}.wav", "audio/wav", key=dl_key)
+
     ab_col(ab_c1, "🅐 VERSİYON A", "ab_a", "_t_ab1", "ab_a_ta", "_last_ab_a", "btnab1", "dlab", "ab-A")
     ab_col(ab_c2, "🅑 VERSİYON B", "ab_b", "_t_ab2", "ab_b_ta", "_last_ab_b", "btnab2", "dlbb", "ab-B")
 
@@ -1554,8 +1571,8 @@ with t5:
                 st.markdown(f"<div class='fav-card'><div class='fav-name'>⭐ {fv['name']}</div><div class='fav-prev'>{fv.get('voice','—')} · {fv['text'][:55]}</div></div>", unsafe_allow_html=True)
             with fc2:
                 if st.button("📋 Yükle", key=f"fcp_{fv['id']}", use_container_width=True):
-                    st.session_state._t_tek = st.session_state.ta1 = fv["text"]
-                    st.success("✅ Tek sekmesine yüklendi!")
+                    st.session_state._pending_t_tek = fv["text"]
+                    st.rerun()
             with fc3:
                 if st.button("🔴 Oku", key=f"fsp_{fv['id']}", use_container_width=True):
                     try:
@@ -1644,7 +1661,7 @@ with t6:
                 st.rerun()
     with rj2:
         st.session_state._rj_model = model_selector("rj")
-        st.session_state._rj_lang = [k for k, v in LANGUAGES.items() if v == st.selectbox("Dil", list(LANGUAGES.values()), index=1, key="rj_lsel")][0]
+        st.session_state._rj_lang = lang_selector("rj")
         st.session_state._rj_voice = st.selectbox("Ses", list(VOICES.keys()), format_func=lambda x: f"{VOICES[x][0]} {x}", key="rj_vsel")
         st.session_state._rj_start = st.text_input("Başlangıç Saati", value=st.session_state._rj_start, key="rj_start_inp")
         rjps = st.selectbox("Stil", list(STYLE_PRESETS.keys()), key="rj_ps")
@@ -1916,10 +1933,10 @@ with t8:
                                 q_txt = st.text_area("Anons Metni", value=st.session_state.get(f"yo_qtxt_{tid}", auto_bas(trk)), height=68, key=f"yo_qtxt_{tid}")
                                 if st.button("🔴 Anında Seslendir & Ata", key=f"yo_qgen_{tid}", use_container_width=True):
                                     try:
-                                        rw_q, mm_q, _ = tts_single("gemini-2.5-flash-tts", q_txt, q_vc, "tr-TR", "")
+                                        rw_q, mm_q, _ = tts_single("gemini-3.1-flash-tts-preview", q_txt, q_vc, "tr-TR", "")
                                         wv_q = pcm2wav(rw_q, mm_q)
                                         trk["anons_bytes"], trk["anons_name"] = wv_q, f"TTS_{q_vc}"
-                                        arc_add(q_vc, "gemini-2.5-flash-tts", "tr-TR", "", q_txt, wv_q, "otomasyon")
+                                        arc_add(q_vc, "gemini-3.1-flash-tts-preview", "tr-TR", "", q_txt, wv_q, "otomasyon")
                                         st.success(f"✅ Üretildi ve atandı ({dur_bytes(wv_q):.1f}s)!")
                                     except Exception as e:
                                         st.error(f"❌ {e}")
@@ -2339,7 +2356,8 @@ with t13:
                             st.rerun()
                     with b3:
                         if st.button("🗑️ Sil", key=f"sch_del_{idx_s}", use_container_width=True):
-                            os.remove(os.path.join(DIRS["schedules"], s["_file"]))
+                            fp_del = os.path.join(DIRS["schedules"], s["_file"])
+                            if os.path.exists(fp_del): os.remove(fp_del)
                             st.rerun()
 
 # ════════════════ T14 — SES KLONLAMA (RVC HAZIRLIK) ═════════════
@@ -2360,7 +2378,11 @@ with t14:
                 rvc_dir = os.path.join(DIRS["rvc_workspace"], sfn(clone_name))
                 seg_cnt = prepare_rvc_dataset(saved_paths, rvc_dir, chunk_sec=rvc_chunk)
                 if seg_cnt > 0:
-                    zip_items = [(f, open(os.path.join(rvc_dir, f), "rb").read()) for f in sorted(os.listdir(rvc_dir)) if os.path.isfile(os.path.join(rvc_dir, f))]
+                    zip_items = []
+                    for f in sorted(os.listdir(rvc_dir)):
+                        fp = os.path.join(rvc_dir, f)
+                        if os.path.isfile(fp):
+                            with open(fp, "rb") as fh: zip_items.append((f, fh.read()))
                     st.session_state._last_rvc_zip = {"zip": make_zip(zip_items), "name": sfn(clone_name), "cnt": seg_cnt, "dir": rvc_dir}
             if st.session_state._last_rvc_zip:
                 lrvc = st.session_state._last_rvc_zip
@@ -2436,7 +2458,7 @@ st.markdown("<hr>", unsafe_allow_html=True)
 tk_f, tr_f = pool_stats()
 st.markdown(
     f"<div style='text-align:center;color:{CURRENT_THEME['muted']};font-size:.72rem;letter-spacing:.06em;padding:6px 0 12px;'>"
-    f"<b>İMAJ FM TTS STÜDYO v7.3</b> · {'✅ Gemini' if GEMINI_OK else '❌ Gemini'} · "
+    f"<b>İMAJ FM TTS STÜDYO v7.4</b> · {'✅ Gemini' if GEMINI_OK else '❌ Gemini'} · "
     f"{'✅ PyDub' if PYDUB_OK else '❌ PyDub'} · {'✅ NumPy' if NP_OK else '❌ NumPy'} · "
     f"{'✅ Mutagen' if MUTAGEN_OK else '❌ Mutagen'} · API: {tk_f}/10 ({tr_f} kalan) · 2026</div>",
     unsafe_allow_html=True,
