@@ -2872,4 +2872,3 @@ st.markdown(
     f"İMAJ FM TTS STÜDYO v7.1 · {gms} · {pds} · {nps} · {mts} · API: {tk_f}/10 yüklü · {tr_f} kalan · 2026</div>",
     unsafe_allow_html=True,
 )
-```
