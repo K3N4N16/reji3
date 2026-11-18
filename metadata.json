@@ -1,0 +1,8 @@
+{
+  "name": "İmaj FM · TTS Stüdyo v7.5",
+  "description": "Tam Entegre Seslendirme & Yayın Otomasyon Stüdyosu — Gemini TTS, AI Anons Yazarı, Talk-Over, Fon+Anons Mikser, Delay Reji, Efektler, RSS ve Dönüştürücü",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
